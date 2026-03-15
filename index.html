@@ -71,16 +71,18 @@
 
     /* ── PANEL TOGGLE BUTTON ────────────────────────────────── */
     #panel-toggle {
-      flex-shrink: 0;
-      height: 34px; border-radius: 17px; padding: 0 14px;
-      background: rgba(0,212,255,.15); border: 1px solid var(--accent);
-      color: var(--accent); font-size: .78rem; font-weight: 700;
-      letter-spacing: .03em; white-space: nowrap;
-      cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
-      transition: background .2s; box-shadow: 0 2px 10px rgba(0,212,255,.15);
+      position: fixed; z-index: 950;
+      top: 62px; left: 50%; transform: translateX(-50%);
+      height: 38px; border-radius: 19px; padding: 0 20px;
+      background: rgba(0,10,26,.82); border: 1px solid var(--accent);
+      color: var(--accent); font-size: .82rem; font-weight: 700;
+      letter-spacing: .04em; white-space: nowrap;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+      backdrop-filter: blur(12px);
+      transition: background .2s; box-shadow: 0 4px 16px rgba(0,0,0,.45);
     }
-    #panel-toggle:hover { background: rgba(0,212,255,.28); }
-    #panel-toggle.panel-open { background: rgba(0,212,255,.22); }
+    #panel-toggle:hover { background: rgba(0,212,255,.18); }
+    #panel-toggle.panel-open { background: rgba(0,212,255,.15); }
 
     /* ── LEFT PANEL ─────────────────────────────────────────── */
     #left-panel {
@@ -101,7 +103,7 @@
     /* ── MOBILE OVERRIDES ── */
     @media (max-width: 768px) {
       #panel-toggle {
-        padding: 0 11px; font-size: .74rem; height: 30px;
+        top: 60px; height: 34px; padding: 0 16px; font-size: .77rem;
       }
       #left-panel {
         /* slide up from bottom */
@@ -277,14 +279,16 @@
   <div class="live-badge"><div class="dot"></div>LIVE</div>
   <span id="last-updated">Updated: —</span>
   <button id="btn-refresh" onclick="refreshAll()"><i class="fas fa-rotate-right"></i> Refresh</button>
-  <button id="panel-toggle" onclick="togglePanel()" aria-label="Search your flight">
-    <i class="fas fa-magnifying-glass" id="toggle-icon"></i>
-    <span id="toggle-label">Search Your Flight</span>
-  </button>
 </div>
 
 <!-- ── MAP ─────────────────────────────────────────────────── -->
 <div id="map"></div>
+
+<!-- ── PANEL TOGGLE (centered below header) ─────────────────── -->
+<button id="panel-toggle" onclick="togglePanel()" aria-label="Search your flight">
+  <i class="fas fa-magnifying-glass" id="toggle-icon"></i>
+  <span id="toggle-label">Search Your Flight</span>
+</button>
 
 <!-- ── MOBILE BACKDROP ──────────────────────────────────────── -->
 <div id="panel-backdrop" onclick="closePanel()"></div>
