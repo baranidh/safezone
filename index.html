@@ -212,6 +212,18 @@
     .leg-line { width: 22px; height: 3px; border-radius: 2px; flex-shrink: 0; }
     .leg-zone { width: 16px; height: 10px; border-radius: 3px; flex-shrink: 0; border: 2px solid; }
 
+    /* ── MOBILE BACKDROP ───────────────────────────────────── */
+    #panel-backdrop {
+      display: none;
+      position: fixed; inset: 0; z-index: 850;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(2px);
+      transition: opacity .3s;
+    }
+    @media (max-width: 768px) {
+      #panel-backdrop.visible { display: block; }
+    }
+
     /* hide legend on very small screens */
     @media (max-width: 400px) { #legend { display: none; } }
 
@@ -281,6 +293,9 @@
 
 <!-- ── MAP ─────────────────────────────────────────────────── -->
 <div id="map"></div>
+
+<!-- ── MOBILE BACKDROP ──────────────────────────────────────── -->
+<div id="panel-backdrop" onclick="closePanel()"></div>
 
 <!-- ── PANEL TOGGLE ─────────────────────────────────────────── -->
 <button id="panel-toggle" onclick="togglePanel()" aria-label="Toggle panel">
@@ -702,12 +717,18 @@ function haversineKm(lat1,lon1,lat2,lon2) {
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-function isNearPath(lat,lng,pts,threshKm=180) {
-  // sample every 5th point for speed
-  for(let i=0;i<pts.length;i+=5){
-    if(haversineKm(lat,lng,pts[i][0],pts[i][1])<threshKm) return true;
+function distToPath(lat,lng,pts) {
+  // Return the minimum distance (km) from a point to any sampled path point
+  let min = Infinity;
+  for(let i=0;i<pts.length;i+=4){
+    const d = haversineKm(lat,lng,pts[i][0],pts[i][1]);
+    if(d < min) min = d;
   }
-  return false;
+  return min;
+}
+
+function isNearPath(lat,lng,pts,threshKm=50) {
+  return distToPath(lat,lng,pts) < threshKm;
 }
 
 function pathCrossesZones(pts) {
@@ -790,8 +811,12 @@ async function fetchRouteFlights(pts, oCode, dCode) {
     const data = await res.json();
     const states = (data.states||[]).filter(s => s && !s[8] && s[5]!=null && s[6]!=null);
 
-    // Filter to flights near the great circle path
-    const onRoute = states.filter(s => isNearPath(s[6], s[5], pts, 200));
+    // Score each flight by distance to path, keep only those within 50 km
+    const scored = states
+      .map(s => ({ s, dist: distToPath(s[6], s[5], pts) }))
+      .filter(x => x.dist < 50)
+      .sort((a,b) => a.dist - b.dist);
+    const onRoute = scored.map(x => x.s);
 
     renderRouteFlights(onRoute, oCode, dCode);
   } catch(e) {
@@ -809,11 +834,12 @@ function renderRouteFlights(flights, oCode, dCode) {
   document.getElementById('stat-flights').textContent = flights.length;
 
   const planeIcon = (track) => L.divIcon({
-    html:`<div style="transform:rotate(${track||0}deg);font-size:18px;line-height:1;filter:drop-shadow(0 0 5px #00d4ff);color:#00d4ff">✈</div>`,
-    className:'', iconSize:[20,20], iconAnchor:[10,10],
+    html:`<div style="transform:rotate(${track||0}deg);font-size:13px;line-height:1;color:#00d4ff;opacity:.92">✈</div>`,
+    className:'', iconSize:[14,14], iconAnchor:[7,7],
   });
 
-  flights.forEach(s => {
+  // Cap map icons at 25 closest flights; sidebar list shows up to 15
+  flights.slice(0,25).forEach(s => {
     const cs  = (s[1]||'').trim()||'N/A';
     const alt = s[7]  ? `${Math.round(s[7])}m` : '—';
     const vel = s[9]  ? `${Math.round(s[9]*3.6)} km/h` : '—';
@@ -833,7 +859,7 @@ function renderRouteFlights(flights, oCode, dCode) {
 
   const listEl = document.getElementById('flights-list');
   if(flights.length===0){
-    listEl.innerHTML = `<div class="flights-placeholder">No flights currently detected near the ${oCode}→${dCode} route corridor (±200 km).</div>`;
+    listEl.innerHTML = `<div class="flights-placeholder">No flights detected within 50 km of the ${oCode}→${dCode} corridor right now.</div>`;
     showToast(`No live flights found near ${oCode}→${dCode}`,'info');
     return;
   }
@@ -894,35 +920,34 @@ async function refreshAll() {
 let panelOpen = false;
 const isMobile = () => window.innerWidth <= 768;
 
-function togglePanel() {
-  panelOpen = !panelOpen;
-  const panel  = document.getElementById('left-panel');
-  const toggle = document.getElementById('panel-toggle');
-  const icon   = document.getElementById('toggle-icon');
-  const label  = document.getElementById('toggle-label');
+function setPanelState(open) {
+  panelOpen = open;
+  const panel    = document.getElementById('left-panel');
+  const toggle   = document.getElementById('panel-toggle');
+  const icon     = document.getElementById('toggle-icon');
+  const label    = document.getElementById('toggle-label');
+  const backdrop = document.getElementById('panel-backdrop');
 
-  panel.classList.toggle('panel-hidden', !panelOpen);
-  toggle.classList.toggle('panel-open', panelOpen);
-  icon.className  = panelOpen ? 'fas fa-times' : 'fas fa-bars';
+  panel.classList.toggle('panel-hidden', !open);
+  toggle.classList.toggle('panel-open', open);
+  icon.className = open ? 'fas fa-times' : 'fas fa-bars';
 
   if(isMobile()){
     label.style.display = 'inline';
-    label.textContent   = panelOpen ? 'Close' : 'Filters & Flights';
+    label.textContent   = open ? 'Close' : 'Filters & Flights';
+    backdrop.classList.toggle('visible', open);
   } else {
     label.style.display = 'none';
+    backdrop.classList.remove('visible');
   }
 }
 
+function togglePanel() { setPanelState(!panelOpen); }
+function closePanel()  { setPanelState(false); }
+
 function handleResize() {
-  const label = document.getElementById('toggle-label');
-  if(isMobile()){
-    label.style.display = panelOpen ? 'inline' : 'inline';
-    label.textContent   = panelOpen ? 'Close' : 'Filters & Flights';
-  } else {
-    label.style.display = 'none';
-  }
-  // On mobile show label always
-  if(isMobile()) document.getElementById('toggle-label').style.display='inline';
+  // Re-sync panel state on resize (e.g. rotation between portrait/landscape)
+  setPanelState(panelOpen);
 }
 window.addEventListener('resize', handleResize);
 
