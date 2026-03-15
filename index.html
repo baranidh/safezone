@@ -58,10 +58,11 @@
     #btn-refresh.loading i { animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* hide tagline on small screens */
+    /* hide tagline + refresh on small screens */
     @media (max-width: 600px) {
       .tagline { display: none; }
       #last-updated { display: none; }
+      #btn-refresh { display: none; }
       .logo span { font-size: 1rem; }
     }
 
@@ -71,18 +72,18 @@
     /* ── PANEL TOGGLE BUTTON ────────────────────────────────── */
     #panel-toggle {
       position: fixed; z-index: 950;
-      width: 42px; height: 42px; border-radius: 50%;
-      background: var(--panel); border: 1px solid var(--border);
-      color: var(--accent); font-size: 1rem;
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      /* desktop: pill in header row, right-aligned */
+      top: 8px; right: 14px;
+      height: 36px; border-radius: 18px; padding: 0 16px;
+      background: rgba(0,212,255,.15); border: 1px solid var(--accent);
+      color: var(--accent); font-size: .82rem; font-weight: 700;
+      letter-spacing: .03em;
+      cursor: pointer; display: flex; align-items: center; gap: 8px;
       backdrop-filter: blur(12px);
-      transition: all .2s; box-shadow: 0 2px 12px rgba(0,0,0,.5);
-      /* desktop: top-left below header */
-      top: 64px; left: 12px;
+      transition: all .2s; box-shadow: 0 2px 12px rgba(0,212,255,.18);
     }
-    #panel-toggle:hover { background: rgba(0,212,255,.15); border-color: var(--accent); }
-    /* on desktop, shift right when panel is open so it sits on panel edge */
-    #panel-toggle.panel-open { left: 308px; }
+    #panel-toggle:hover { background: rgba(0,212,255,.28); }
+    #panel-toggle.panel-open { background: rgba(0,212,255,.25); }
 
     /* ── LEFT PANEL ─────────────────────────────────────────── */
     #left-panel {
@@ -103,17 +104,12 @@
     /* ── MOBILE OVERRIDES ── */
     @media (max-width: 768px) {
       #panel-toggle {
-        /* bottom center pill when panel closed */
-        bottom: 18px; top: auto; left: 50%; right: auto;
-        transform: translateX(-50%);
-        width: auto; border-radius: 22px; padding: 0 20px;
-        font-size: .82rem; font-weight: 600; gap: 7px;
-        height: 44px;
+        /* on mobile stay in header but shrink slightly */
+        top: 9px; right: 10px;
+        height: 34px; padding: 0 13px; font-size: .78rem;
       }
       #panel-toggle.panel-open {
-        /* shift up when panel open */
-        left: 50%; bottom: calc(62vh + 10px);
-        transform: translateX(-50%);
+        /* no shift needed — button stays in header */
       }
       #left-panel {
         /* slide up from bottom */
@@ -298,9 +294,9 @@
 <div id="panel-backdrop" onclick="closePanel()"></div>
 
 <!-- ── PANEL TOGGLE ─────────────────────────────────────────── -->
-<button id="panel-toggle" onclick="togglePanel()" aria-label="Toggle panel">
-  <i class="fas fa-bars" id="toggle-icon"></i>
-  <span id="toggle-label" style="display:none">Filters & Flights</span>
+<button id="panel-toggle" onclick="togglePanel()" aria-label="Search your flight">
+  <i class="fas fa-magnifying-glass" id="toggle-icon"></i>
+  <span id="toggle-label">Search Your Flight</span>
 </button>
 
 <!-- ── LEFT PANEL ───────────────────────────────────────────── -->
@@ -688,8 +684,8 @@ function populateAirportSelects() {
       sel.appendChild(grp);
     });
   });
-  document.getElementById('origin-select').value = 'LHR';
-  document.getElementById('dest-select').value   = 'DXB';
+  document.getElementById('origin-select').value = 'SIN';
+  document.getElementById('dest-select').value   = 'LHR';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -930,16 +926,12 @@ function setPanelState(open) {
 
   panel.classList.toggle('panel-hidden', !open);
   toggle.classList.toggle('panel-open', open);
-  icon.className = open ? 'fas fa-times' : 'fas fa-bars';
+  icon.className  = open ? 'fas fa-times' : 'fas fa-magnifying-glass';
+  label.textContent = open ? 'Close' : 'Search Your Flight';
 
-  if(isMobile()){
-    label.style.display = 'inline';
-    label.textContent   = open ? 'Close' : 'Filters & Flights';
-    backdrop.classList.toggle('visible', open);
-  } else {
-    label.style.display = 'none';
-    backdrop.classList.remove('visible');
-  }
+  // backdrop only on mobile
+  if(isMobile()) backdrop.classList.toggle('visible', open);
+  else           backdrop.classList.remove('visible');
 }
 
 function togglePanel() { setPanelState(!panelOpen); }
