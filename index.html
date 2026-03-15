@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SafeZone — Middle East Conflict & Flight Monitor</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0b0f1e;
+      --panel: rgba(12, 18, 36, 0.92);
+      --border: rgba(0, 212, 255, 0.18);
+      --accent: #00d4ff;
+      --accent2: #ff6b35;
+      --text: #d0e4f0;
+      --muted: #7a9ab0;
+      --red: #ff3b3b;
+      --orange: #ff8c00;
+      --yellow: #ffd700;
+      --green: #39ff82;
+      --pink: #ff4fa3;
+      --purple: #b47dff;
+    }
+
+    html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+
+    /* ─── HEADER ─────────────────────────────────────────────── */
+    #header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      height: 56px;
+      background: linear-gradient(90deg, rgba(0,20,40,0.97) 0%, rgba(0,12,28,0.97) 100%);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 16px; padding: 0 18px;
+      backdrop-filter: blur(10px);
+    }
+    #header .logo { display: flex; align-items: center; gap: 9px; }
+    #header .logo i { color: var(--accent); font-size: 1.4rem; }
+    #header .logo span { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.06em; color: #fff; }
+    #header .tagline { font-size: 0.72rem; color: var(--muted); border-left: 1px solid var(--border); padding-left: 14px; }
+    .spacer { flex: 1; }
+    #last-updated { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+    .live-badge { display: flex; align-items: center; gap: 6px; background: rgba(255,59,59,0.15); border: 1px solid rgba(255,59,59,0.35); border-radius: 12px; padding: 3px 10px; font-size: 0.72rem; color: var(--red); font-weight: 600; }
+    .live-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); animation: pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(0.7)} }
+
+    #btn-refresh {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 16px; border-radius: 8px; border: 1px solid var(--accent);
+      background: rgba(0,212,255,0.1); color: var(--accent);
+      font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all .2s;
+    }
+    #btn-refresh:hover { background: rgba(0,212,255,0.22); }
+    #btn-refresh.loading i { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── MAP ────────────────────────────────────────────────── */
+    #map { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; z-index: 1; }
+
+    /* ─── LEFT PANEL ─────────────────────────────────────────── */
+    #left-panel {
+      position: fixed; top: 68px; left: 12px; bottom: 12px;
+      width: 300px; z-index: 900; overflow-y: auto;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 14px 18px;
+      backdrop-filter: blur(14px);
+      display: flex; flex-direction: column; gap: 14px;
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    }
+    #left-panel::-webkit-scrollbar { width: 4px; }
+    #left-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .panel-section { display: flex; flex-direction: column; gap: 8px; }
+    .panel-title {
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em;
+      color: var(--accent); text-transform: uppercase;
+      border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+    label { font-size: 0.78rem; color: var(--muted); }
+    select, input {
+      width: 100%; padding: 7px 10px; border-radius: 7px;
+      border: 1px solid var(--border); background: rgba(0,20,45,0.7);
+      color: var(--text); font-size: 0.82rem; outline: none;
+      transition: border-color .2s;
+    }
+    select:focus, input:focus { border-color: var(--accent); }
+    select option { background: #0b1a2e; }
+
+    .btn-primary {
+      width: 100%; padding: 8px; border-radius: 8px; border: none;
+      background: linear-gradient(135deg, rgba(0,212,255,0.25), rgba(0,130,180,0.35));
+      border: 1px solid var(--accent); color: var(--accent);
+      font-size: 0.83rem; font-weight: 600; cursor: pointer; transition: all .2s;
+    }
+    .btn-primary:hover { background: rgba(0,212,255,0.35); }
+    .btn-secondary {
+      width: 100%; padding: 7px; border-radius: 7px; border: none;
+      background: rgba(255,107,53,0.12); border: 1px solid var(--accent2);
+      color: var(--accent2); font-size: 0.8rem; font-weight: 600;
+      cursor: pointer; transition: all .2s;
+    }
+    .btn-secondary:hover { background: rgba(255,107,53,0.25); }
+
+    /* Filter checkboxes */
+    .filter-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; cursor: pointer; padding: 3px 0;
+    }
+    .filter-row input[type=checkbox] { width: auto; accent-color: var(--accent); cursor: pointer; }
+    .dot-badge { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Stats grid */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat-card {
+      background: rgba(0,25,55,0.6); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px;
+    }
+    .stat-card .sv { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+    .stat-card .sl { font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
+
+    /* Flight list */
+    #flights-list { display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow-y: auto; }
+    .flight-item {
+      background: rgba(0,20,45,0.6); border: 1px solid var(--border);
+      border-radius: 7px; padding: 7px 9px; font-size: 0.75rem;
+      cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 8px;
+    }
+    .flight-item:hover { border-color: var(--accent); background: rgba(0,212,255,0.07); }
+    .flight-item i { color: var(--accent); font-size: 0.8rem; }
+    .flight-item .callsign { font-weight: 700; color: var(--accent); }
+    .flight-item .country { color: var(--muted); font-size: 0.68rem; }
+
+    #flight-path-info {
+      background: rgba(0,20,45,0.8); border: 1px solid rgba(0,212,255,0.3);
+      border-radius: 8px; padding: 10px; font-size: 0.78rem; display: none;
+    }
+    #flight-path-info .route { font-weight: 700; color: var(--accent); font-size: 0.9rem; }
+    #flight-path-info .risk { margin-top: 6px; }
+    .risk-high { color: var(--red); font-weight: 600; }
+    .risk-med  { color: var(--orange); font-weight: 600; }
+    .risk-low  { color: var(--green); font-weight: 600; }
+    .risk-item { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; font-size: 0.72rem; color: var(--muted); }
+
+    /* ─── LEGEND ─────────────────────────────────────────────── */
+    #legend {
+      position: fixed; bottom: 20px; right: 12px; z-index: 900;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px;
+      backdrop-filter: blur(12px); min-width: 180px;
+    }
+    #legend .leg-title { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; }
+    .leg-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 0.75rem; color: var(--text); }
+    .leg-sym { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.55rem; }
+    .leg-line { width: 24px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+    .leg-zone { width: 18px; height: 12px; border-radius: 3px; flex-shrink: 0; border: 2px solid; }
+
+    /* ─── SOURCES BADGE ──────────────────────────────────────── */
+    #sources-bar {
+      position: fixed; bottom: 20px; left: 320px; right: 210px; z-index: 900;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 14px;
+      backdrop-filter: blur(10px);
+      display: flex; align-items: center; gap: 14px; font-size: 0.72rem; flex-wrap: wrap;
+    }
+    #sources-bar span { color: var(--muted); }
+    #sources-bar a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    #sources-bar a:hover { text-decoration: underline; }
+
+    /* ─── TOAST ──────────────────────────────────────────────── */
+    #toast {
+      position: fixed; top: 68px; right: 12px; z-index: 9999;
+      background: rgba(0,25,50,0.95); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 16px; font-size: 0.8rem;
+      transition: opacity .3s; opacity: 0; pointer-events: none;
+      max-width: 260px;
+    }
+    #toast.show { opacity: 1; }
+    #toast.error { border-color: var(--red); color: var(--red); }
+    #toast.success { border-color: var(--green); color: var(--green); }
+    #toast.info { border-color: var(--accent); color: var(--accent); }
+
+    /* ─── CUSTOM LEAFLET ─────────────────────────────────────── */
+    .leaflet-popup-content-wrapper {
+      background: rgba(8,18,38,0.97) !important; border: 1px solid var(--border) !important;
+      border-radius: 10px !important; color: var(--text) !important;
+    }
+    .leaflet-popup-tip { background: rgba(8,18,38,0.97) !important; }
+    .popup-title { font-weight: 700; font-size: 0.9rem; color: var(--accent); margin-bottom: 6px; }
+    .popup-meta { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
+    .popup-desc { font-size: 0.78rem; color: var(--text); }
+    .popup-source { font-size: 0.68rem; color: var(--muted); margin-top: 6px; font-style: italic; }
+    .popup-badge {
+      display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 0.65rem;
+      font-weight: 700; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .badge-critical { background: rgba(255,59,59,0.2); color: var(--red); border: 1px solid var(--red); }
+    .badge-major    { background: rgba(255,140,0,0.2); color: var(--orange); border: 1px solid var(--orange); }
+    .badge-medium   { background: rgba(255,215,0,0.15); color: var(--yellow); border: 1px solid var(--yellow); }
+    .badge-low      { background: rgba(0,255,128,0.1); color: var(--green); border: 1px solid var(--green); }
+
+    .flight-popup-title { font-weight: 700; color: var(--accent); font-size: 0.9rem; }
+    .flight-popup-body  { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────────── */
+    @media (max-width: 700px) {
+      #left-panel { width: calc(100% - 24px); top: auto; bottom: 110px; left: 12px; right: 12px; max-height: 40vh; }
+      #sources-bar { display: none; }
+      #legend { right: 12px; bottom: 12px; }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ─── HEADER ──────────────────────────────────────────────── -->
+<div id="header">
+  <div class="logo">
+    <i class="fas fa-shield-halved"></i>
+    <span>SafeZone</span>
+  </div>
+  <div class="tagline">Middle East Conflict & Aviation Monitor</div>
+  <div class="spacer"></div>
+  <div class="live-badge"><div class="dot"></div>LIVE</div>
+  <span id="last-updated">Last updated: —</span>
+  <button id="btn-refresh" onclick="refreshAll()">
+    <i class="fas fa-rotate-right"></i> Refresh
+  </button>
+</div>
+
+<!-- ─── MAP ─────────────────────────────────────────────────── -->
+<div id="map"></div>
+
+<!-- ─── LEFT PANEL ───────────────────────────────────────────── -->
+<div id="left-panel">
+
+  <!-- Stats -->
+  <div class="panel-section">
+    <div class="panel-title"><i class="fas fa-chart-bar"></i> Overview</div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="sv" id="stat-events">—</div><div class="sl">Strike Events</div></div>
+      <div class="stat-card"><div class="sv" id="stat-flights">—</div><div class="sl">Live Flights</div></div>
+      <div class="stat-card"><div class="sv" id="stat-zones">6</div><div class="sl">Danger Zones</div></div>
+      <div class="stat-card"><div class="sv" id="stat-actors">5</div><div class="sl">Active Actors</div></div>
+    </div>
+  </div>
+
+  <!-- Flight Path Planner -->
+  <div class="panel-section">
+    <div class="panel-title"><i class="fas fa-route"></i> Flight Path Planner</div>
+    <label>Origin Airport</label>
+    <select id="origin-select"></select>
+    <label>Destination Airport</label>
+    <select id="dest-select"></select>
+    <button class="btn-primary" onclick="plotFlightPath()"><i class="fas fa-paper-plane"></i> Show Flight Path</button>
+    <button class="btn-secondary" onclick="clearFlightPath()"><i class="fas fa-times"></i> Clear Path</button>
+    <div id="flight-path-info"></div>
+  </div>
+
+  <!-- Filters -->
+  <div class="panel-section">
+    <div class="panel-title"><i class="fas fa-filter"></i> Event Filters</div>
+    <label style="margin-bottom:2px">Strike Type</label>
+    <label class="filter-row"><input type="checkbox" id="f-airstrike" checked onchange="applyFilters()"><div class="dot-badge" style="background:#ff3b3b"></div>Airstrike</label>
+    <label class="filter-row"><input type="checkbox" id="f-missile" checked onchange="applyFilters()"><div class="dot-badge" style="background:#ff8c00"></div>Missile / Rocket</label>
+    <label class="filter-row"><input type="checkbox" id="f-drone" checked onchange="applyFilters()"><div class="dot-badge" style="background:#ffd700"></div>Drone Attack</label>
+    <label style="margin-top:6px;margin-bottom:2px">Actor</label>
+    <label class="filter-row"><input type="checkbox" id="f-israel" checked onchange="applyFilters()"><div class="dot-badge" style="background:#4fa3ff"></div>Israel (IDF)</label>
+    <label class="filter-row"><input type="checkbox" id="f-iran" checked onchange="applyFilters()"><div class="dot-badge" style="background:#b47dff"></div>Iran / IRGC</label>
+    <label class="filter-row"><input type="checkbox" id="f-hezbollah" checked onchange="applyFilters()"><div class="dot-badge" style="background:#ff4fa3"></div>Hezbollah</label>
+    <label class="filter-row"><input type="checkbox" id="f-houthi" checked onchange="applyFilters()"><div class="dot-badge" style="background:#39ff82"></div>Houthi</label>
+    <label class="filter-row"><input type="checkbox" id="f-coalition" checked onchange="applyFilters()"><div class="dot-badge" style="background:#00d4ff"></div>US/UK Coalition</label>
+    <label style="margin-top:6px;margin-bottom:2px">Severity</label>
+    <label class="filter-row"><input type="checkbox" id="f-critical" checked onchange="applyFilters()"><span style="color:#ff3b3b">● Critical</span></label>
+    <label class="filter-row"><input type="checkbox" id="f-major" checked onchange="applyFilters()"><span style="color:#ff8c00">● Major</span></label>
+    <label class="filter-row"><input type="checkbox" id="f-medium" checked onchange="applyFilters()"><span style="color:#ffd700">● Medium</span></label>
+    <label style="margin-top:4px;margin-bottom:2px">Display</label>
+    <label class="filter-row"><input type="checkbox" id="f-zones" checked onchange="toggleDangerZones()">Danger Zones</label>
+    <label class="filter-row"><input type="checkbox" id="f-liveflights" checked onchange="toggleLiveFlights()">Live Flights</label>
+  </div>
+
+  <!-- Live Flights -->
+  <div class="panel-section">
+    <div class="panel-title"><i class="fas fa-plane"></i> Live Flights in Region</div>
+    <div id="flights-list"><div style="color:var(--muted);font-size:.78rem">Press Refresh to load live flights…</div></div>
+  </div>
+
+</div>
+
+<!-- ─── LEGEND ───────────────────────────────────────────────── -->
+<div id="legend">
+  <div class="leg-title">Legend</div>
+  <div class="leg-row"><div class="leg-sym" style="background:#ff3b3b">✦</div> Airstrike</div>
+  <div class="leg-row"><div class="leg-sym" style="background:#ff8c00">⬆</div> Missile / Rocket</div>
+  <div class="leg-row"><div class="leg-sym" style="background:#ffd700">◆</div> Drone Attack</div>
+  <div class="leg-row" style="margin-top:6px"><div class="leg-line" style="background:#00d4ff"></div> Flight Path</div>
+  <div class="leg-row"><div class="leg-sym" style="background:rgba(0,212,255,0.5);border:1px solid #00d4ff">✈</div> Live Flight</div>
+  <div class="leg-row" style="margin-top:6px"><div class="leg-zone" style="background:rgba(255,59,59,0.08);border-color:#ff3b3b"></div> High-Risk Zone</div>
+  <div class="leg-row"><div class="leg-zone" style="background:rgba(255,140,0,0.08);border-color:#ff8c00"></div> Caution Zone</div>
+</div>
+
+<!-- ─── SOURCES ──────────────────────────────────────────────── -->
+<div id="sources-bar">
+  <span>Data sources:</span>
+  <a href="https://www.understandingwar.org" target="_blank">Institute for the Study of War</a>
+  <a href="https://www.aljazeera.com/where/israel" target="_blank">Al Jazeera</a>
+  <a href="https://acleddata.com" target="_blank">ACLED</a>
+  <a href="https://opensky-network.org" target="_blank">OpenSky Network</a>
+  <span style="margin-left:auto;color:var(--muted)">Events: 2024–2025 · Coordinates approximate</span>
+</div>
+
+<!-- ─── TOAST ─────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<!-- ─── SCRIPTS ──────────────────────────────────────────────── -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ════════════════════════════════════════════════════════════════
+//  DATA
+// ════════════════════════════════════════════════════════════════
+
+const AIRPORTS = {
+  // Middle East & conflict region
+  TLV: { name: "Tel Aviv – Ben Gurion", country: "Israel",       lat: 32.0055, lng: 34.8854 },
+  BEY: { name: "Beirut Rafic Hariri",   country: "Lebanon",      lat: 33.8208, lng: 35.4883 },
+  AMM: { name: "Amman Queen Alia",      country: "Jordan",       lat: 31.7226, lng: 35.9932 },
+  BGW: { name: "Baghdad International", country: "Iraq",         lat: 33.2625, lng: 44.2346 },
+  DAM: { name: "Damascus International",country: "Syria",        lat: 33.4114, lng: 36.5155 },
+  IKA: { name: "Tehran – Imam Khomeini",country: "Iran",         lat: 35.4161, lng: 51.1522 },
+  THR: { name: "Tehran – Mehrabad",     country: "Iran",         lat: 35.6892, lng: 51.3140 },
+  MHD: { name: "Mashhad",              country: "Iran",         lat: 36.2352, lng: 59.6409 },
+  DXB: { name: "Dubai International",  country: "UAE",          lat: 25.2532, lng: 55.3657 },
+  AUH: { name: "Abu Dhabi",            country: "UAE",          lat: 24.4330, lng: 54.6511 },
+  DOH: { name: "Doha – Hamad",         country: "Qatar",        lat: 25.2731, lng: 51.6081 },
+  BAH: { name: "Bahrain International",country: "Bahrain",      lat: 26.2708, lng: 50.6336 },
+  KWI: { name: "Kuwait International", country: "Kuwait",       lat: 29.2267, lng: 47.9689 },
+  RUH: { name: "Riyadh – King Khalid", country: "Saudi Arabia", lat: 24.9578, lng: 46.6989 },
+  JED: { name: "Jeddah – King Abdulaziz",country:"Saudi Arabia",lat: 21.6796, lng: 39.1565 },
+  MCT: { name: "Muscat – Seeb",        country: "Oman",         lat: 23.5933, lng: 58.2844 },
+  SAH: { name: "Sana'a International", country: "Yemen",        lat: 15.4763, lng: 44.2196 },
+  CAI: { name: "Cairo International",  country: "Egypt",        lat: 30.1219, lng: 31.4056 },
+  IST: { name: "Istanbul – Ataturk",   country: "Turkey",       lat: 40.9769, lng: 28.8146 },
+  SAW: { name: "Istanbul – Sabiha",    country: "Turkey",       lat: 40.8985, lng: 29.3093 },
+  ESB: { name: "Ankara – Esenboga",    country: "Turkey",       lat: 40.1281, lng: 32.9951 },
+  ATH: { name: "Athens",               country: "Greece",       lat: 37.9364, lng: 23.9445 },
+  NIC: { name: "Nicosia – Larnaca",    country: "Cyprus",       lat: 34.8751, lng: 33.6249 },
+  // Wider region
+  KHI: { name: "Karachi – Jinnah",     country: "Pakistan",     lat: 24.9008, lng: 67.1681 },
+  LHE: { name: "Lahore – Allama Iqbal",country: "Pakistan",     lat: 31.5216, lng: 74.4036 },
+  DEL: { name: "Delhi – Indira Gandhi",country: "India",        lat: 28.5562, lng: 77.1000 },
+  BOM: { name: "Mumbai – Chhatrapati", country: "India",        lat: 19.0896, lng: 72.8656 },
+  LHR: { name: "London Heathrow",      country: "UK",           lat: 51.4775, lng: -0.4614 },
+  FRA: { name: "Frankfurt",            country: "Germany",      lat: 50.0333, lng:  8.5706 },
+  CDG: { name: "Paris – Charles de Gaulle",country:"France",    lat: 49.0097, lng:  2.5479 },
+  MAD: { name: "Madrid – Barajas",     country: "Spain",        lat: 40.4719, lng: -3.5626 },
+  JFK: { name: "New York – JFK",       country: "USA",          lat: 40.6413, lng:-73.7781 },
+  SVO: { name: "Moscow – Sheremetyevo",country: "Russia",       lat: 55.9736, lng: 37.4125 },
+  BKK: { name: "Bangkok – Suvarnabhumi",country:"Thailand",     lat: 13.6811, lng:100.7474 },
+  SIN: { name: "Singapore – Changi",   country: "Singapore",    lat:  1.3644, lng:103.9915 },
+};
+
+// Conflict events — sourced from ISW, Al Jazeera, Reuters, ACLED (coords approximate)
+const CONFLICT_EVENTS = [
+  // ── Iran → Israel (April 2024 Operation True Promise)
+  { id:1,  date:"2024-04-14", type:"drone",    actor:"Iran",       target:"Israel (intercepted over Jordan/Israel)", lat:31.5,    lng:36.0,    severity:"critical", source:"ISW / Al Jazeera",  desc:"Iran launches 170+ Shahed-136 drones toward Israel; most intercepted by Israel, Jordan, US." },
+  { id:2,  date:"2024-04-14", type:"missile",  actor:"Iran",       target:"Nevatim Air Base, Israel",               lat:31.2084, lng:35.0122, severity:"critical", source:"ISW",               desc:"Iran fires 120+ ballistic missiles at Israel; most intercepted. Minor damage at Nevatim AB." },
+  // ── Israel → Iran (April 2024 response)
+  { id:3,  date:"2024-04-19", type:"airstrike", actor:"Israel",    target:"Isfahan, Iran",                          lat:32.6546, lng:51.668,  severity:"major",    source:"ISW / Reuters",     desc:"Israel strikes radar near Isfahan air base with air-launched ballistic missiles." },
+  // ── Iran → Israel (October 2024 Operation True Promise II)
+  { id:4,  date:"2024-10-01", type:"missile",  actor:"Iran",       target:"Israel (multiple sites)",                lat:31.8,    lng:35.0,    severity:"critical", source:"ISW",               desc:"Iran launches ~180 Fattah-1 and Shahab-3 ballistic missiles at Israel; majority intercepted." },
+  // ── Israel → Iran (October 2024 response)
+  { id:5,  date:"2024-10-26", type:"airstrike", actor:"Israel",    target:"Air defense sites, Iran",                lat:35.1,    lng:51.5,    severity:"critical", source:"ISW / Al Jazeera",  desc:"Israel strikes Iranian S-300 air defense radar & military infrastructure in 4 provinces." },
+  { id:6,  date:"2024-10-26", type:"airstrike", actor:"Israel",    target:"Ilam Province, Iran",                    lat:33.6374, lng:46.4227, severity:"major",    source:"Reuters",           desc:"IDF strikes weapons storage facilities in Ilam province, Iran." },
+  // ── Israel → Syria (Iranian consulate)
+  { id:7,  date:"2024-04-01", type:"airstrike", actor:"Israel",    target:"Iranian Consulate, Damascus",            lat:33.5138, lng:36.2765, severity:"critical", source:"Al Jazeera / ISW",  desc:"Israel destroys Iranian consulate annex in Damascus; 7 IRGC officers killed incl. Gen. Zahedi." },
+  { id:8,  date:"2024-12-25", type:"airstrike", actor:"Israel",    target:"Homs, Syria",                            lat:34.7324, lng:36.7137, severity:"major",    source:"ISW",               desc:"IDF strikes weapons depots in Homs following Syrian government collapse." },
+  // ── Lebanon / Hezbollah ↔ Israel
+  { id:9,  date:"2024-07-30", type:"airstrike", actor:"Israel",    target:"Beirut southern suburbs",                lat:33.8519, lng:35.5017, severity:"critical", source:"ISW / Al Jazeera",  desc:"Israel kills Hezbollah commander Fuad Shukr in targeted strike in Dahieh, Beirut." },
+  { id:10, date:"2024-09-17", type:"airstrike", actor:"Israel",    target:"South Lebanon",                          lat:33.2721, lng:35.2433, severity:"major",    source:"Al Jazeera",        desc:"IDF strikes Hezbollah weapons depots and command posts across southern Lebanon." },
+  { id:11, date:"2024-09-23", type:"airstrike", actor:"Israel",    target:"Bekaa Valley, Lebanon",                  lat:33.8469, lng:35.9016, severity:"major",    source:"ISW",               desc:"IDF massive airstrike campaign targets Hezbollah infrastructure in Bekaa Valley." },
+  { id:12, date:"2024-09-27", type:"airstrike", actor:"Israel",    target:"Hezbollah HQ, Beirut",                   lat:33.8344, lng:35.5003, severity:"critical", source:"ISW / Reuters",     desc:"Israel kills Hezbollah Secretary-General Hassan Nasrallah in bunker-busting strike." },
+  { id:13, date:"2024-10-16", type:"airstrike", actor:"Israel",    target:"Bint Jbeil, South Lebanon",              lat:33.1204, lng:35.4310, severity:"major",    source:"Al Jazeera",        desc:"IDF ground and air operations around Bint Jbeil targeting Hezbollah strongholds." },
+  { id:14, date:"2024-08-25", type:"missile",   actor:"Hezbollah", target:"Haifa area, Israel",                     lat:32.7940, lng:34.9896, severity:"major",    source:"Al Jazeera",        desc:"Hezbollah fires ~320 rockets and drones at northern Israel in pre-emptive strike." },
+  { id:15, date:"2024-09-01", type:"missile",   actor:"Hezbollah", target:"Kiryat Shmona, Israel",                  lat:33.2074, lng:35.5713, severity:"medium",   source:"ISW",               desc:"Hezbollah Katyusha rocket barrage on Kiryat Shmona and surrounding communities." },
+  { id:16, date:"2024-06-11", type:"missile",   actor:"Hezbollah", target:"Northern Israel (Golan Heights)",        lat:32.9,    lng:35.7,    severity:"medium",   source:"Reuters",           desc:"Hezbollah fires anti-tank missiles and rockets toward Golan Heights communities." },
+  // ── Houthi attacks
+  { id:17, date:"2024-07-19", type:"drone",     actor:"Houthi",    target:"Tel Aviv, Israel",                       lat:32.0853, lng:34.7818, severity:"critical", source:"Al Jazeera / ISW",  desc:"Houthi Waad-2 drone kills 1, injures 10 in first Houthi strike on Tel Aviv." },
+  { id:18, date:"2024-09-15", type:"missile",   actor:"Houthi",    target:"Central Israel",                         lat:31.8,    lng:34.9,    severity:"major",    source:"ISW",               desc:"Houthi ballistic missile intercepted by Arrow-3 over Israel's airspace." },
+  { id:19, date:"2024-12-21", type:"missile",   actor:"Houthi",    target:"Tel Aviv – Ben Gurion Airport",          lat:32.0055, lng:34.8854, severity:"critical", source:"Al Jazeera",        desc:"Houthi hypersonic missile evades Iron Dome, crater forms near Ben Gurion Airport." },
+  { id:20, date:"2024-01-15", type:"missile",   actor:"Houthi",    target:"Red Sea – commercial shipping",          lat:15.5527, lng:43.5,    severity:"medium",   source:"Al Jazeera",        desc:"Houthi anti-ship missile attacks on Red Sea commercial vessels, disrupting global trade." },
+  { id:21, date:"2024-03-10", type:"drone",     actor:"Houthi",    target:"Gulf of Aden – merchant vessel",         lat:12.5,    lng:44.5,    severity:"medium",   source:"Reuters",           desc:"Houthi drone and missile attack on UK-flagged bulk carrier in Gulf of Aden." },
+  { id:22, date:"2025-01-12", type:"missile",   actor:"Houthi",    target:"Eilat, Israel",                          lat:29.5577, lng:34.9519, severity:"major",    source:"ISW",               desc:"Houthi ballistic missile targets southern Israeli port city Eilat." },
+  // ── US/UK coalition → Yemen
+  { id:23, date:"2024-01-12", type:"airstrike", actor:"Coalition", target:"Sana'a, Yemen",                          lat:15.3694, lng:44.1910, severity:"major",    source:"ISW / Reuters",     desc:"US/UK coalition Operation Poseidon Archer strikes Houthi military sites near Sana'a." },
+  { id:24, date:"2024-02-24", type:"airstrike", actor:"Coalition", target:"Hodeidah, Yemen",                        lat:14.7975, lng:42.9528, severity:"major",    source:"ISW",               desc:"US strikes Houthi radar and missile infrastructure at Hodeidah port." },
+  // ── Israel → Yemen
+  { id:25, date:"2024-09-29", type:"airstrike", actor:"Israel",    target:"Hodeidah Port, Yemen",                   lat:14.8204, lng:42.9441, severity:"major",    source:"Al Jazeera / ISW",  desc:"Israel strikes Houthi-controlled Hodeidah port and oil infrastructure in retaliation." },
+  { id:26, date:"2025-01-27", type:"airstrike", actor:"Israel",    target:"Sana'a Airport, Yemen",                  lat:15.4763, lng:44.2196, severity:"critical", source:"ISW",               desc:"IDF destroys Sana'a International Airport and Hodeidah port in largest-ever Mideast airstrike." },
+  // ── Gaza
+  { id:27, date:"2024-10-07", type:"airstrike", actor:"Israel",    target:"Gaza City",                              lat:31.5017, lng:34.4667, severity:"critical", source:"Al Jazeera",        desc:"IDF massive air campaign across Gaza City following Hamas assault on southern Israel." },
+  { id:28, date:"2024-10-25", type:"airstrike", actor:"Israel",    target:"Khan Younis, Gaza",                      lat:31.3452, lng:34.3049, severity:"major",    source:"ISW",               desc:"IDF ground offensive and airstrikes in Khan Younis targeting Hamas infrastructure." },
+  { id:29, date:"2024-11-18", type:"airstrike", actor:"Israel",    target:"Jabalia, North Gaza",                    lat:31.5317, lng:34.4849, severity:"critical", source:"Al Jazeera",        desc:"IDF targets Hamas command tunnels in Jabalia refugee camp, heavy civilian casualties." },
+  { id:30, date:"2025-01-15", type:"missile",   actor:"Hamas",     target:"Tel Aviv outskirts",                     lat:32.05,   lng:34.85,  severity:"medium",   source:"ISW",               desc:"Hamas fires rockets from remaining launch sites in northern Gaza toward Tel Aviv." },
+];
+
+// Danger zones [lat, lng, radiusKm, label, color, level]
+const DANGER_ZONES = [
+  { lat:31.4,   lng:34.45, r:80,  label:"Gaza Conflict Zone",        color:"#ff3b3b", level:"high"   },
+  { lat:33.2,   lng:35.35, r:90,  label:"Lebanon / South Lebanon",   color:"#ff3b3b", level:"high"   },
+  { lat:33.85,  lng:35.5,  r:45,  label:"Greater Beirut Area",       color:"#ff8c00", level:"high"   },
+  { lat:15.4,   lng:44.2,  r:160, label:"Yemen / Houthi Territory",  color:"#ff8c00", level:"high"   },
+  { lat:15.5,   lng:43.2,  r:220, label:"Red Sea – Houthi Threat",   color:"#ffd700", level:"med"    },
+  { lat:31.9,   lng:35.1,  r:75,  label:"Israel Airspace",           color:"#ffd700", level:"med"    },
+  { lat:34.7,   lng:36.7,  r:120, label:"Syria Conflict Zone",       color:"#ff8c00", level:"high"   },
+  { lat:35.4,   lng:51.2,  r:100, label:"Tehran – Air Defense Area", color:"#b47dff", level:"med"    },
+];
+
+// ════════════════════════════════════════════════════════════════
+//  MAP INIT
+// ════════════════════════════════════════════════════════════════
+let map, conflictLayerGroup, dangerZoneGroup, flightPathGroup, liveFlightsGroup;
+let allMarkers = [];
+let currentFlightLine = null;
+
+function initMap() {
+  map = L.map('map', {
+    center: [30.5, 42.5],
+    zoom: 5,
+    zoomControl: false,
+    attributionControl: true,
+  });
+
+  // Dark tile layer
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap contributors © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19,
+  }).addTo(map);
+
+  L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+  dangerZoneGroup  = L.layerGroup().addTo(map);
+  conflictLayerGroup = L.layerGroup().addTo(map);
+  flightPathGroup  = L.layerGroup().addTo(map);
+  liveFlightsGroup = L.layerGroup().addTo(map);
+
+  renderDangerZones();
+  renderConflictEvents(CONFLICT_EVENTS);
+  populateAirportSelects();
+  document.getElementById('stat-events').textContent = CONFLICT_EVENTS.length;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  DANGER ZONES
+// ════════════════════════════════════════════════════════════════
+function renderDangerZones() {
+  dangerZoneGroup.clearLayers();
+  DANGER_ZONES.forEach(z => {
+    const fillColor = z.color;
+    const circle = L.circle([z.lat, z.lng], {
+      radius: z.r * 1000,
+      color: fillColor,
+      fillColor: fillColor,
+      fillOpacity: 0.07,
+      weight: 1.5,
+      dashArray: z.level === 'high' ? null : '6 4',
+      opacity: 0.55,
+    });
+    circle.bindTooltip(`<b style="color:${fillColor}">${z.label}</b><br><span style="font-size:.72rem;color:#7a9ab0">${z.level === 'high' ? '⚠ High Risk' : '⚡ Caution'}</span>`, { sticky: true, className: '' });
+    dangerZoneGroup.addLayer(circle);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  CONFLICT EVENT MARKERS
+// ════════════════════════════════════════════════════════════════
+const ACTOR_COLOR = {
+  Israel:    '#4fa3ff',
+  Iran:      '#b47dff',
+  Hezbollah: '#ff4fa3',
+  Houthi:    '#39ff82',
+  Coalition: '#00d4ff',
+  Hamas:     '#ff8c00',
+};
+const TYPE_SYMBOL = { airstrike:'✦', missile:'⬆', drone:'◆' };
+const SEV_RING = { critical:'#ff3b3b', major:'#ff8c00', medium:'#ffd700', low:'#39ff82' };
+
+function makeMarkerIcon(event) {
+  const ac = ACTOR_COLOR[event.actor] || '#ffffff';
+  const sc = SEV_RING[event.severity] || '#ffffff';
+  const sym = TYPE_SYMBOL[event.type] || '●';
+  const size = event.severity === 'critical' ? 32 : event.severity === 'major' ? 26 : 22;
+  const html = `
+    <div style="
+      width:${size}px;height:${size}px;border-radius:50%;
+      background:rgba(0,0,0,0.7);
+      border:2px solid ${sc};
+      box-shadow:0 0 8px ${sc}88,0 0 2px ${sc};
+      display:flex;align-items:center;justify-content:center;
+      color:${ac};font-size:${size*0.4}px;font-weight:700;
+      cursor:pointer;
+    ">${sym}</div>`;
+  return L.divIcon({ html, className:'', iconSize:[size,size], iconAnchor:[size/2,size/2] });
+}
+
+function renderConflictEvents(events) {
+  conflictLayerGroup.clearLayers();
+  allMarkers = [];
+  events.forEach(ev => {
+    const icon = makeMarkerIcon(ev);
+    const marker = L.marker([ev.lat, ev.lng], { icon });
+    const sevClass = `badge-${ev.severity}`;
+    const popup = `
+      <div style="min-width:220px">
+        <div class="popup-badge ${sevClass}">${ev.severity}</div>
+        <div class="popup-title">${ev.target}</div>
+        <div class="popup-meta"><i class="fas fa-calendar" style="color:#7a9ab0"></i> ${ev.date} &nbsp;|&nbsp; <span style="color:${ACTOR_COLOR[ev.actor]||'#fff'}">${ev.actor}</span> &nbsp;|&nbsp; ${ev.type}</div>
+        <div class="popup-desc">${ev.desc}</div>
+        <div class="popup-source"><i class="fas fa-database"></i> Source: ${ev.source}</div>
+      </div>`;
+    marker.bindPopup(popup, { maxWidth: 300 });
+    marker._eventData = ev;
+    conflictLayerGroup.addLayer(marker);
+    allMarkers.push({ marker, event: ev });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  FILTERS
+// ════════════════════════════════════════════════════════════════
+function applyFilters() {
+  const typeOn = {
+    airstrike: document.getElementById('f-airstrike').checked,
+    missile:   document.getElementById('f-missile').checked,
+    drone:     document.getElementById('f-drone').checked,
+  };
+  const actorOn = {
+    Israel:    document.getElementById('f-israel').checked,
+    Iran:      document.getElementById('f-iran').checked,
+    Hezbollah: document.getElementById('f-hezbollah').checked,
+    Houthi:    document.getElementById('f-houthi').checked,
+    Coalition: document.getElementById('f-coalition').checked,
+    Hamas:     document.getElementById('f-coalition').checked, // grouped
+  };
+  const sevOn = {
+    critical: document.getElementById('f-critical').checked,
+    major:    document.getElementById('f-major').checked,
+    medium:   document.getElementById('f-medium').checked,
+  };
+
+  const filtered = CONFLICT_EVENTS.filter(ev =>
+    typeOn[ev.type] !== false &&
+    actorOn[ev.actor] !== false &&
+    sevOn[ev.severity] !== false
+  );
+  renderConflictEvents(filtered);
+  document.getElementById('stat-events').textContent = filtered.length;
+}
+
+function toggleDangerZones() {
+  if (document.getElementById('f-zones').checked) {
+    dangerZoneGroup.addTo(map);
+  } else {
+    map.removeLayer(dangerZoneGroup);
+  }
+}
+function toggleLiveFlights() {
+  if (document.getElementById('f-liveflights').checked) {
+    liveFlightsGroup.addTo(map);
+  } else {
+    map.removeLayer(liveFlightsGroup);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  AIRPORT SELECTS
+// ════════════════════════════════════════════════════════════════
+function populateAirportSelects() {
+  const codes = Object.keys(AIRPORTS).sort((a,b) => AIRPORTS[a].country.localeCompare(AIRPORTS[b].country));
+  ['origin-select','dest-select'].forEach((id, idx) => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = '';
+    codes.forEach(code => {
+      const ap = AIRPORTS[code];
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = `${code} — ${ap.name} (${ap.country})`;
+      sel.appendChild(opt);
+    });
+    // Sensible defaults
+    if (id === 'origin-select') sel.value = 'LHR';
+    if (id === 'dest-select')   sel.value = 'DXB';
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  GREAT CIRCLE FLIGHT PATH
+// ════════════════════════════════════════════════════════════════
+function greatCirclePoints(lat1, lon1, lat2, lon2, n = 120) {
+  const toRad = d => d * Math.PI / 180;
+  const toDeg = r => r * 180 / Math.PI;
+  const φ1 = toRad(lat1), λ1 = toRad(lon1);
+  const φ2 = toRad(lat2), λ2 = toRad(lon2);
+  const d  = 2 * Math.asin(Math.sqrt(
+    Math.sin((φ1-φ2)/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin((λ1-λ2)/2)**2
+  ));
+  if (d < 1e-9) return [[lat1,lon1],[lat2,lon2]];
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const f = i / n;
+    const A = Math.sin((1-f)*d)/Math.sin(d);
+    const B = Math.sin(f*d)/Math.sin(d);
+    const x = A*Math.cos(φ1)*Math.cos(λ1) + B*Math.cos(φ2)*Math.cos(λ2);
+    const y = A*Math.cos(φ1)*Math.sin(λ1) + B*Math.cos(φ2)*Math.sin(λ2);
+    const z = A*Math.sin(φ1) + B*Math.sin(φ2);
+    pts.push([toDeg(Math.atan2(z, Math.sqrt(x*x+y*y))), toDeg(Math.atan2(y,x))]);
+  }
+  return pts;
+}
+
+function pathIntersectsDangerZone(pts) {
+  const zones = [];
+  for (const z of DANGER_ZONES) {
+    for (const [lat, lng] of pts) {
+      const dist = haversineKm(lat, lng, z.lat, z.lng);
+      if (dist < z.r) { zones.push(z); break; }
+    }
+  }
+  return zones;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function plotFlightPath() {
+  const oCode = document.getElementById('origin-select').value;
+  const dCode = document.getElementById('dest-select').value;
+  if (oCode === dCode) { showToast('Select different airports', 'error'); return; }
+
+  const origin = AIRPORTS[oCode];
+  const dest   = AIRPORTS[dCode];
+  clearFlightPath();
+
+  const pts = greatCirclePoints(origin.lat, origin.lng, dest.lat, dest.lng);
+  const dangerousZones = pathIntersectsDangerZone(pts);
+  const hasDanger = dangerousZones.length > 0;
+  const highRisk  = dangerousZones.some(z => z.level === 'high');
+
+  // Draw path with color segments
+  const pathColor = highRisk ? '#ff3b3b' : dangerousZones.length ? '#ff8c00' : '#00d4ff';
+
+  const polyline = L.polyline(pts, {
+    color: pathColor,
+    weight: 3,
+    opacity: 0.85,
+    dashArray: hasDanger ? null : '8 4',
+  });
+  flightPathGroup.addLayer(polyline);
+
+  // Origin marker
+  const oIcon = L.divIcon({
+    html:`<div style="background:#00d4ff;color:#000;font-size:.65rem;font-weight:700;padding:3px 7px;border-radius:4px;white-space:nowrap;box-shadow:0 0 8px #00d4ff88">${oCode}</div>`,
+    className:'', iconAnchor:[20,10]
+  });
+  const dIcon = L.divIcon({
+    html:`<div style="background:#00d4ff;color:#000;font-size:.65rem;font-weight:700;padding:3px 7px;border-radius:4px;white-space:nowrap;box-shadow:0 0 8px #00d4ff88">${dCode}</div>`,
+    className:'', iconAnchor:[20,10]
+  });
+  flightPathGroup.addLayer(L.marker([origin.lat, origin.lng], { icon: oIcon }));
+  flightPathGroup.addLayer(L.marker([dest.lat, dest.lng],   { icon: dIcon }));
+
+  // Fit bounds
+  map.fitBounds(polyline.getBounds(), { padding: [60,60] });
+
+  // Distance
+  const distKm = Math.round(haversineKm(origin.lat, origin.lng, dest.lat, dest.lng));
+  const distMi = Math.round(distKm * 0.621371);
+
+  // Info panel
+  const infoEl = document.getElementById('flight-path-info');
+  infoEl.style.display = 'block';
+  let riskHtml = '';
+  if (dangerousZones.length === 0) {
+    riskHtml = `<div class="risk-low">✓ Path avoids known conflict zones</div>`;
+  } else {
+    riskHtml = `<div class="${highRisk ? 'risk-high' : 'risk-med'}">${highRisk ? '⚠ HIGH RISK' : '⚡ CAUTION'}: Path crosses conflict zones</div>`;
+    dangerousZones.forEach(z => {
+      riskHtml += `<div class="risk-item"><span style="color:${z.color}">●</span> ${z.label}</div>`;
+    });
+  }
+
+  infoEl.innerHTML = `
+    <div class="route">${oCode} → ${dCode}</div>
+    <div style="font-size:.75rem;color:var(--muted);margin-top:3px">${origin.name} → ${dest.name}</div>
+    <div style="font-size:.78rem;margin-top:6px;display:flex;gap:12px">
+      <span><i class="fas fa-ruler" style="color:var(--muted)"></i> ${distKm.toLocaleString()} km</span>
+      <span style="color:var(--muted)">${distMi.toLocaleString()} mi</span>
+    </div>
+    <div class="risk" style="margin-top:8px">${riskHtml}</div>`;
+
+  showToast(`Flight path plotted: ${oCode} → ${dCode}`, 'success');
+}
+
+function clearFlightPath() {
+  flightPathGroup.clearLayers();
+  const infoEl = document.getElementById('flight-path-info');
+  infoEl.style.display = 'none';
+  infoEl.innerHTML = '';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  LIVE FLIGHTS (OpenSky Network)
+// ════════════════════════════════════════════════════════════════
+async function fetchLiveFlights() {
+  // Bounding box: Middle East + surrounding (lat 8–46, lon 24–76)
+  const url = 'https://opensky-network.org/api/states/all?lamin=8&lomin=24&lamax=46&lomax=76';
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.states || [];
+  } catch(e) {
+    console.warn('OpenSky fetch failed:', e.message);
+    return null;
+  }
+}
+
+function renderLiveFlights(states) {
+  liveFlightsGroup.clearLayers();
+  const listEl = document.getElementById('flights-list');
+
+  if (!states) {
+    listEl.innerHTML = `<div style="color:var(--orange);font-size:.78rem">⚠ Live flight data unavailable (rate limit or network). Try again shortly.</div>`;
+    document.getElementById('stat-flights').textContent = '—';
+    return;
+  }
+
+  // Filter: airborne only, valid position
+  const airborne = states.filter(s => s && !s[8] && s[5] != null && s[6] != null);
+  document.getElementById('stat-flights').textContent = airborne.length;
+
+  const planeIcon = (track) => {
+    const t = track || 0;
+    return L.divIcon({
+      html:`<div style="transform:rotate(${t}deg);font-size:16px;line-height:1;filter:drop-shadow(0 0 4px #00d4ff)">✈</div>`,
+      className:'',
+      iconSize:[18,18],
+      iconAnchor:[9,9],
+    });
+  };
+
+  airborne.forEach(s => {
+    const lng = s[5], lat = s[6];
+    const callsign = (s[1] || '').trim() || 'Unknown';
+    const country  = s[2] || 'Unknown';
+    const alt      = s[7] ? `${Math.round(s[7])}m` : '—';
+    const vel      = s[9] ? `${Math.round(s[9]*3.6)} km/h` : '—';
+    const track    = s[10] || 0;
+
+    const marker = L.marker([lat, lng], { icon: planeIcon(track) });
+    marker.bindPopup(`
+      <div class="flight-popup-title">✈ ${callsign}</div>
+      <div class="flight-popup-body">
+        <div>Country: <span style="color:var(--text)">${country}</span></div>
+        <div>Altitude: <span style="color:var(--text)">${alt}</span></div>
+        <div>Speed: <span style="color:var(--text)">${vel}</span></div>
+        <div>Heading: <span style="color:var(--text)">${Math.round(track)}°</span></div>
+        <div>ICAO24: <span style="color:var(--muted)">${s[0]}</span></div>
+      </div>`);
+    liveFlightsGroup.addLayer(marker);
+  });
+
+  // Populate sidebar list (top 12)
+  const top = airborne.slice(0, 12);
+  if (top.length === 0) {
+    listEl.innerHTML = `<div style="color:var(--muted);font-size:.78rem">No flights in region currently.</div>`;
+    return;
+  }
+  listEl.innerHTML = top.map(s => {
+    const cs = (s[1] || '').trim() || 'Unknown';
+    const country = s[2] || '';
+    const alt = s[7] ? `${Math.round(s[7])}m` : '—';
+    return `<div class="flight-item" onclick="map.flyTo([${s[6]},${s[5]}],8)">
+      <i class="fas fa-plane"></i>
+      <div>
+        <div class="callsign">${cs}</div>
+        <div class="country">${country} · ${alt}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════════════════════════
+//  REFRESH
+// ════════════════════════════════════════════════════════════════
+async function refreshAll() {
+  const btn = document.getElementById('btn-refresh');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  showToast('Fetching latest data…', 'info');
+
+  try {
+    const states = await fetchLiveFlights();
+    renderLiveFlights(states);
+    applyFilters();
+    renderDangerZones();
+
+    const now = new Date();
+    document.getElementById('last-updated').textContent =
+      'Last updated: ' + now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+    if (states) {
+      showToast(`Updated · ${(states.filter(s=>s&&!s[8]&&s[5]!=null)).length} live flights`, 'success');
+    } else {
+      showToast('Conflict data refreshed · Live flights unavailable', 'info');
+    }
+  } catch(e) {
+    showToast('Refresh failed: ' + e.message, 'error');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  TOAST
+// ════════════════════════════════════════════════════════════════
+let toastTimer;
+function showToast(msg, type='info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  BOOT
+// ════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  initMap();
+  // Auto-load live flights on start
+  fetchLiveFlights().then(states => {
+    renderLiveFlights(states);
+    const now = new Date();
+    document.getElementById('last-updated').textContent =
+      'Last updated: ' + now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  });
+});
+</script>
+
+</body>
+</html>
