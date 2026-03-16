@@ -965,7 +965,8 @@ async function fetchRouteFlights(pts, oCode, dCode, distKm) {
   const now   = Math.floor(Date.now() / 1000);
   const begin = now - Math.round(flightHours * 3600);
 
-  let directIcao24s = null; // Set when the departure API succeeds
+  let directIcao24s = null; // Set<string> when we have confirmed departures
+  let depApiWorked  = false; // true once the departure API returns a valid response
 
   try {
     const depRes = await fetch(
@@ -974,12 +975,14 @@ async function fetchRouteFlights(pts, oCode, dCode, distKm) {
     );
     if (depRes.ok) {
       const departures = await depRes.json();
+      depApiWorked = true;
       if (Array.isArray(departures) && departures.length > 0) {
-        // Keep flights whose estimated arrival is our destination, OR whose
-        // arrival airport is not yet determined (still en route).
+        // Only keep flights confirmed to land at our destination.
+        // We intentionally exclude "estArrivalAirport == null" — an unknown
+        // destination is not evidence the flight is going to D.icao, and
+        // including them produced false positives near busy hubs.
         const relevant = departures.filter(f =>
-          f.icao24 &&
-          (f.estArrivalAirport === D.icao || !f.estArrivalAirport)
+          f.icao24 && f.estArrivalAirport === D.icao
         );
         if (relevant.length > 0) {
           directIcao24s = new Set(relevant.map(f => f.icao24.toLowerCase()));
@@ -988,7 +991,25 @@ async function fetchRouteFlights(pts, oCode, dCode, distKm) {
     }
   } catch(e) {
     console.warn('[SafeZone] Departure lookup failed:', e.message);
-    // directIcao24s stays null → positional fallback below
+    // depApiWorked stays false
+  }
+
+  // ── Guard: if we have no confirmed departures, stop here ─────────────────
+  // The positional-only fallback (bounding box + heading filter) is unreliable
+  // for long-haul routes: many unrelated aircraft converge near the destination
+  // and pass the heading + altitude gates.  Better to show nothing than to show
+  // wrong flights.
+  if (!directIcao24s) {
+    const msg = depApiWorked
+      ? `No ${oCode}→${dCode} departures found in the past ${Math.round(flightHours)}h. `
+        + `The flight may not have departed yet, or check back once it's airborne.`
+      : `Departure records temporarily unavailable (OpenSky rate limit). `
+        + `Tap Refresh in a few seconds to try again.`;
+    document.getElementById('flights-list').innerHTML =
+      `<div class="flights-placeholder" style="color:var(--muted)">${msg}</div>`;
+    document.getElementById('stat-flights').textContent = '0';
+    showToast(depApiWorked ? `No verified ${oCode}→${dCode} flights yet` : 'Departure data rate-limited — retry shortly', 'info');
+    return;
   }
 
   // ── Step 2: fetch live positions in the route bounding box ───────────────
@@ -1001,13 +1022,13 @@ async function fetchRouteFlights(pts, oCode, dCode, distKm) {
   const lomin = (Math.min(...lngs)-2).toFixed(2);
   const lomax = (Math.max(...lngs)+2).toFixed(2);
 
-  // Positional safety gates (applied even when we have departure data, to
-  // catch any stale icao24 hits that have since landed or diverted)
-  const isLongHaul  = distKm > 1500;
-  const minAltM     = isLongHaul ? 8500 : 3500;
-  const minSpeedMs  = isLongHaul ? 185  : 100;
-  const headingTol  = 65;
-  const bearing     = routeBearing(pts);
+  // Positional safety gates — applied on top of the icao24 whitelist to
+  // discard any stale departure record that has since landed or diverted.
+  const isLongHaul = distKm > 1500;
+  const minAltM    = isLongHaul ? 8500 : 3500;
+  const minSpeedMs = isLongHaul ? 185  : 100;
+  const headingTol = 65;
+  const bearing    = routeBearing(pts);
 
   try {
     const statesRes = await fetch(
@@ -1017,20 +1038,15 @@ async function fetchRouteFlights(pts, oCode, dCode, distKm) {
     if (!statesRes.ok) throw new Error(`HTTP ${statesRes.status}`);
     const data = await statesRes.json();
 
+    // Apply positional gates, then restrict to confirmed icao24s only.
     let states = (data.states || []).filter(s => {
       if (!s || s[8]) return false;
       if (s[5] == null || s[6] == null) return false;
       if (s[7] == null || s[7] < minAltM) return false;
       if (s[9] == null || s[9] < minSpeedMs) return false;
       if (s[10] != null && angleDiff(s[10], bearing) > headingTol) return false;
-      return true;
+      return directIcao24s.has(s[0].toLowerCase());
     });
-
-    // If the departure API gave us confirmed icao24s, restrict to those only.
-    // This is the direct-flight lock — no connecting aircraft can pass.
-    if (directIcao24s) {
-      states = states.filter(s => directIcao24s.has(s[0].toLowerCase()));
-    }
 
     // Final proximity check: must be within 50 km of the actual drawn path
     const scored = states
@@ -1038,7 +1054,7 @@ async function fetchRouteFlights(pts, oCode, dCode, distKm) {
       .filter(x => x.dist < 50)
       .sort((a, b) => a.dist - b.dist);
 
-    renderRouteFlights(scored.map(x => x.s), oCode, dCode, !!directIcao24s);
+    renderRouteFlights(scored.map(x => x.s), oCode, dCode, true);
   } catch(e) {
     const errMsg = e.name === 'TimeoutError'
       ? 'OpenSky request timed out. Try again.'
@@ -1173,7 +1189,8 @@ function callsignToAirline(cs) {
 // Try one 2-hour window for a given callsign
 async function _tryWindow(callsign, begin, end) {
   const res = await fetch(
-    `https://opensky-network.org/api/flights/all?callsign=${encodeURIComponent(callsign)}&begin=${begin}&end=${end}`,
+    // OpenSky stores Mode S callsigns padded to 8 chars — must match exactly
+    `https://opensky-network.org/api/flights/all?callsign=${encodeURIComponent(callsign.padEnd(8))}&begin=${begin}&end=${end}`,
     { signal: AbortSignal.timeout(9000) }
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1182,32 +1199,34 @@ async function _tryWindow(callsign, begin, end) {
   return data[data.length - 1]; // most recent entry in this window
 }
 
-// Find the flight record (icao24 + origin/dest) across multiple callsign variants and time windows
+// Find the flight record (icao24 + origin/dest) across multiple callsign variants and time windows.
+// Searches in small sequential batches (most-recent first) to stay within OpenSky's
+// anonymous rate limit — firing 48 calls at once reliably triggers 429s on all of them.
 async function fetchFlightRecord(rawCallsign) {
   const variants = normalizeCallsign(rawCallsign);
   const now = Math.floor(Date.now() / 1000);
-  const W = 7200; // 2-hour max window for anonymous OpenSky
+  const W = 7200; // 2-hour window (OpenSky anonymous API limit)
 
-  // Phase 1: dense search of last 48h (catches airborne + recently landed).
-  // 24 windows × 2 callsign variants = up to 48 parallel calls.
-  const phase1 = [];
-  for (const cs of variants) {
-    for (let offset = 0; offset < 48 * 3600; offset += W) {
-      phase1.push(_tryWindow(cs, now - offset - W, now - offset));
-    }
+  // Phase 1: slide a 2-hour window back over the last 18 hours, two variants in parallel
+  // per step.  Max 9 steps × 2 calls = 18 calls, but stops the moment one window hits.
+  for (let offset = 0; offset < 18 * 3600; offset += W) {
+    try {
+      return await Promise.any(
+        variants.map(cs => _tryWindow(cs, now - offset - W, now - offset))
+      );
+    } catch { /* no hit in this window, try the next */ }
   }
-  try { return await Promise.any(phase1); } catch { /* fall through */ }
 
-  // Phase 2: one spot-check per day for days 3–10 (shows standard route
-  // even when the flight is between operations or not currently airborne).
-  const phase2 = [];
-  for (const cs of variants) {
-    for (let day = 2; day <= 10; day++) {
-      const end = now - day * 86400;
-      phase2.push(_tryWindow(cs, end - W, end));
-    }
+  // Phase 2: one spot-check per day for days 1–10 (captures the standard route on days
+  // when the flight isn't currently airborne). Two variants in parallel, sequential per day.
+  for (let day = 1; day <= 10; day++) {
+    const end = now - day * 86400;
+    try {
+      return await Promise.any(
+        variants.map(cs => _tryWindow(cs, end - W, end))
+      );
+    } catch { /* not found on this day */ }
   }
-  try { return await Promise.any(phase2); } catch { /* not found */ }
 
   return null;
 }
