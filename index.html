@@ -305,7 +305,7 @@
     <div class="section-body" style="max-height:200px">
       <div class="stats-grid" style="padding-top:4px">
         <div class="stat-card"><div class="sv" id="stat-events">—</div><div class="sl">Strike Events</div></div>
-        <div class="stat-card"><div class="sv" id="stat-flights">—</div><div class="sl">Route Flights</div></div>
+        <div class="stat-card"><div class="sv" id="stat-flights">—</div><div class="sl">Corridor Aircraft</div></div>
         <div class="stat-card"><div class="sv">8</div><div class="sl">Danger Zones</div></div>
         <div class="stat-card"><div class="sv">6</div><div class="sl">Active Actors</div></div>
       </div>
@@ -768,6 +768,23 @@ function isNearPath(lat,lng,pts,threshKm=50) {
   return distToPath(lat,lng,pts) < threshKm;
 }
 
+// Bearing from first to last waypoint — used to verify aircraft heading
+function routeBearing(pts) {
+  const [lat1, lon1] = pts[0];
+  const [lat2, lon2] = pts[pts.length - 1];
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+  const y = Math.sin(dLon) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// Smallest angle between two compass headings
+function angleDiff(a, b) {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
 function pathCrossesZones(pts) {
   const hit=[];
   for(const z of DANGER_ZONES){
@@ -845,38 +862,56 @@ async function plotFlightPath() {
     ${routeBadge}
     <div style="margin-top:7px">${riskHtml}</div>`;
 
-  showToast(`Fetching live flights on ${oCode}→${dCode}…`,'info');
-  await fetchRouteFlights(pts, oCode, dCode);
+  showToast(`Fetching live aircraft on ${oCode}→${dCode} corridor…`,'info');
+  await fetchRouteFlights(pts, oCode, dCode, distKm);
 }
 
-async function fetchRouteFlights(pts, oCode, dCode) {
-  // Calculate bounding box of path with generous padding
+async function fetchRouteFlights(pts, oCode, dCode, distKm) {
+  // Bounding box around the actual path (not a giant rectangle)
   const lats = pts.map(p=>p[0]), lngs = pts.map(p=>p[1]);
-  const lamin = (Math.min(...lats)-3).toFixed(2);
-  const lamax = (Math.max(...lats)+3).toFixed(2);
-  const lomin = (Math.min(...lngs)-3).toFixed(2);
-  const lomax = (Math.max(...lngs)+3).toFixed(2);
+  const lamin = (Math.min(...lats)-2).toFixed(2);
+  const lamax = (Math.max(...lats)+2).toFixed(2);
+  const lomin = (Math.min(...lngs)-2).toFixed(2);
+  const lomax = (Math.max(...lngs)+2).toFixed(2);
 
   const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
 
   routeFlightsGroup.clearLayers();
-  document.getElementById('flights-list').innerHTML = `<div class="flights-placeholder">⏳ Querying OpenSky Network…</div>`;
+  document.getElementById('flights-list').innerHTML = `<div class="flights-placeholder">⏳ Querying OpenSky Network for live aircraft…</div>`;
   document.getElementById('stat-flights').textContent = '…';
+
+  // Thresholds scale with route distance so short hops aren't over-filtered
+  const isLongHaul = distKm > 1500;
+  const minAltM   = isLongHaul ? 8500 : 3500;   // long-haul cruise vs short-hop
+  const minSpeedMs = isLongHaul ? 185  : 100;    // ~665 km/h vs ~360 km/h
+  const headingTol = 65;                          // ± degrees from route bearing
+
+  const bearing = routeBearing(pts);
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(14000) });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const states = (data.states||[]).filter(s => s && !s[8] && s[5]!=null && s[6]!=null);
 
-    // Score each flight by distance to path, keep only those within 50 km
+    const states = (data.states||[]).filter(s => {
+      if (!s || s[8]) return false;              // skip nulls and on-ground
+      if (s[5]==null || s[6]==null) return false; // need position
+      // Altitude gate — removes regional/domestic traffic on long-haul queries
+      if (s[7] == null || s[7] < minAltM) return false;
+      // Speed gate — removes slow props and helicopters
+      if (s[9] == null || s[9] < minSpeedMs) return false;
+      // Heading gate — aircraft must be flying roughly toward the destination
+      if (s[10] != null && angleDiff(s[10], bearing) > headingTol) return false;
+      return true;
+    });
+
+    // Keep only aircraft within 50 km of the actual drawn path, sorted by proximity
     const scored = states
       .map(s => ({ s, dist: distToPath(s[6], s[5], pts) }))
       .filter(x => x.dist < 50)
       .sort((a,b) => a.dist - b.dist);
-    const onRoute = scored.map(x => x.s);
 
-    renderRouteFlights(onRoute, oCode, dCode);
+    renderRouteFlights(scored.map(x => x.s), oCode, dCode);
   } catch(e) {
     const errMsg = e.name==='TimeoutError'
       ? 'OpenSky request timed out. Try again.'
@@ -917,14 +952,19 @@ function renderRouteFlights(flights, oCode, dCode) {
 
   const listEl = document.getElementById('flights-list');
   if(flights.length===0){
-    listEl.innerHTML = `<div class="flights-placeholder">No flights detected within 50 km of the ${oCode}→${dCode} corridor right now.</div>`;
-    showToast(`No live flights found near ${oCode}→${dCode}`,'info');
+    listEl.innerHTML = `<div class="flights-placeholder">No airliners detected within 50 km of the ${oCode}→${dCode} corridor at cruise altitude right now.</div>`;
+    showToast(`No cruise-altitude aircraft found near ${oCode}→${dCode}`,'info');
     return;
   }
 
-  listEl.innerHTML = flights.slice(0,15).map(s => {
+  // Header note so users understand what they're seeing
+  const note = `<div style="font-size:.65rem;color:var(--muted);padding:3px 2px 5px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:4px">
+    Live ADS-B · cruise altitude · heading toward ${dCode}
+  </div>`;
+
+  listEl.innerHTML = note + flights.slice(0,15).map(s => {
     const cs  = (s[1]||'').trim()||'N/A';
-    const alt = s[7] ? `${Math.round(s[7])}m` : '—';
+    const alt = s[7] ? `${Math.round(s[7]/100)/10} km` : '—';
     const vel = s[9] ? `${Math.round(s[9]*3.6)} km/h` : '—';
     return `<div class="flight-item" onclick="map.flyTo([${s[6]},${s[5]}],9)">
       <i class="fas fa-plane"></i>
@@ -934,7 +974,7 @@ function renderRouteFlights(flights, oCode, dCode) {
       </div>
     </div>`;
   }).join('');
-  showToast(`${flights.length} live flight${flights.length!==1?'s':''} on ${oCode}→${dCode} route`,'success');
+  showToast(`${flights.length} airliner${flights.length!==1?'s':''} detected in ${oCode}→${dCode} corridor`,'success');
 }
 
 function clearFlightPath() {
