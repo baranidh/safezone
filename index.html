@@ -1188,19 +1188,28 @@ async function fetchFlightRecord(rawCallsign) {
   const now = Math.floor(Date.now() / 1000);
   const W = 7200; // 2-hour max window for anonymous OpenSky
 
-  // Build all (callsign × window) combinations.
-  // Windows: 0–2h, 2–4h, 4–6h … 16–18h back (covers ultra long-haul)
-  const tasks = [];
+  // Phase 1: dense search of last 48h (catches airborne + recently landed).
+  // 24 windows × 2 callsign variants = up to 48 parallel calls.
+  const phase1 = [];
   for (const cs of variants) {
-    for (let offset = 0; offset <= 16 * 3600; offset += W) {
-      tasks.push(_tryWindow(cs, now - offset - W, now - offset));
+    for (let offset = 0; offset < 48 * 3600; offset += W) {
+      phase1.push(_tryWindow(cs, now - offset - W, now - offset));
     }
   }
-  try {
-    return await Promise.any(tasks);
-  } catch {
-    return null;
+  try { return await Promise.any(phase1); } catch { /* fall through */ }
+
+  // Phase 2: one spot-check per day for days 3–10 (shows standard route
+  // even when the flight is between operations or not currently airborne).
+  const phase2 = [];
+  for (const cs of variants) {
+    for (let day = 2; day <= 10; day++) {
+      const end = now - day * 86400;
+      phase2.push(_tryWindow(cs, end - W, end));
+    }
   }
+  try { return await Promise.any(phase2); } catch { /* not found */ }
+
+  return null;
 }
 
 // Fetch live ADS-B state for a known icao24
@@ -1257,102 +1266,111 @@ async function trackFlightNumber() {
   _fnMarker = null;
 
   try {
-    // ── Step 1: find the flight record ──────────────────────────
+    // ── Step 1: find the flight record (48h dense + 10-day spot) ─
     const record = await fetchFlightRecord(raw);
     if (!record) {
       document.getElementById('fn-status').textContent =
-        '✖ Flight not found. Try the ICAO callsign (e.g. UAE509 for EK509).';
+        '✖ Flight not found in last 10 days of OpenSky data. Try the ICAO callsign (e.g. UAE509 for EK509).';
       showToast('Flight not found in OpenSky records', 'error');
       return;
     }
 
-    const icao24 = record.icao24;
-    const oIcao  = record.estDepartureAirport || null;
-    const dIcao  = record.estArrivalAirport   || null;
+    const icao24  = record.icao24;
+    const oIcao   = record.estDepartureAirport || null;
+    const dIcao   = record.estArrivalAirport   || null;
     const csFound = (record.callsign || raw).trim().toUpperCase();
 
-    document.getElementById('fn-status').textContent = 'Step 2/3 — fetching live position…';
+    // Human-readable date of the last seen record
+    const lastSeenDate = record.lastSeen
+      ? new Date(record.lastSeen * 1000).toUTCString().slice(0, 22) + ' UTC'
+      : null;
 
-    // ── Step 2: get live state + airport coords in parallel ──────
+    document.getElementById('fn-status').textContent = 'Step 2/3 — fetching live position + airports…';
+
+    // ── Step 2: live state + airport coords in parallel ──────────
     const [state, oCoord, dCoord] = await Promise.all([
       fetchLiveState(icao24),
       resolveIcaoToCoord(oIcao),
       resolveIcaoToCoord(dIcao),
     ]);
 
-    if (!state) {
-      document.getElementById('fn-status').textContent =
-        '⚠ Flight found in records but aircraft is not currently airborne (landed or data delayed).';
-      showToast(`${csFound}: not currently airborne`, 'info');
-      return;
-    }
+    const isAirborne = !!(state && state[6] != null && state[5] != null);
 
-    const lat = state[6], lng = state[5];
-    const altM = state[7], speedMs = state[9], track = state[10] || 0;
+    // Live position (only if airborne)
+    const lat      = isAirborne ? state[6]  : null;
+    const lng      = isAirborne ? state[5]  : null;
+    const altM     = isAirborne ? state[7]  : null;
+    const speedMs  = isAirborne ? state[9]  : null;
+    const track    = isAirborne ? (state[10] || 0) : 0;
 
     document.getElementById('fn-status').textContent = 'Step 3/3 — drawing route…';
 
-    // ── Step 3: draw route if both airports resolved ─────────────
-    let pts = null, routeIsReal = false, distKm = null;
+    // ── Step 3: draw route whenever we have origin + destination ─
+    let pts = null, routeIsReal = false, distKm = null, zones = [];
     if (oCoord && dCoord) {
-      if (oIcao && dIcao) {
-        pts = await fetchRealRoute(oIcao, dIcao);
-        routeIsReal = !!(pts && pts.length >= 2);
-      }
+      pts = await fetchRealRoute(oIcao, dIcao);
+      routeIsReal = !!(pts && pts.length >= 2);
       if (!pts || pts.length < 2) {
         pts = greatCircle(oCoord.lat, oCoord.lng, dCoord.lat, dCoord.lng);
       }
-      const zones = pathCrossesZones(pts);
+      zones = pathCrossesZones(pts);
       const highRisk = zones.some(z => z.level === 'high');
       const pathColor = highRisk ? '#ff3b3b' : zones.length ? '#ff8c00' : '#00d4ff';
       distKm = Math.round(haversineKm(oCoord.lat, oCoord.lng, dCoord.lat, dCoord.lng));
 
-      const line = L.polyline(pts, { color: pathColor, weight: 3, opacity: .75, dashArray: routeIsReal ? null : '9 5' });
+      // Draw path (dimmer opacity when on ground = historical view)
+      const opacity = isAirborne ? 0.82 : 0.48;
+      const line = L.polyline(pts, { color: pathColor, weight: 3, opacity, dashArray: isAirborne && routeIsReal ? null : '9 5' });
       flightSearchGroup.addLayer(line);
 
       const apIcon = (label, color) => L.divIcon({
         html:`<div style="background:${color};color:#000;font-size:.6rem;font-weight:800;padding:2px 6px;border-radius:4px;white-space:nowrap;opacity:.85">${label}</div>`,
         className:'', iconAnchor:[18,8],
       });
-      if (oCoord) flightSearchGroup.addLayer(L.marker([oCoord.lat, oCoord.lng], { icon: apIcon(oCoord.iata, pathColor) }));
-      if (dCoord) flightSearchGroup.addLayer(L.marker([dCoord.lat, dCoord.lng], { icon: apIcon(dCoord.iata, pathColor) }));
+      flightSearchGroup.addLayer(L.marker([oCoord.lat, oCoord.lng], { icon: apIcon(oCoord.iata, pathColor) }));
+      flightSearchGroup.addLayer(L.marker([dCoord.lat, dCoord.lng], { icon: apIcon(dCoord.iata, pathColor) }));
     }
 
-    // ── Draw prominent aircraft marker ───────────────────────────
-    const acIcon = L.divIcon({
-      html:`<div style="transform:rotate(${track}deg);font-size:22px;line-height:1;color:#fff;filter:drop-shadow(0 0 6px #00d4ff) drop-shadow(0 0 12px #00d4ff88)">✈</div>`,
-      className:'', iconSize:[22,22], iconAnchor:[11,11],
-    });
-    _fnMarker = L.marker([lat, lng], { icon: acIcon, zIndexOffset: 1000 });
+    // ── Draw aircraft marker only when airborne ──────────────────
+    const oName = oCoord ? oCoord.name : (oIcao || '—');
+    const dName = dCoord ? dCoord.name : (dIcao || 'Unknown destination');
 
-    const altKm  = altM  ? `${(altM/1000).toFixed(1)} km`  : '—';
-    const velKmh = speedMs ? `${Math.round(speedMs*3.6)} km/h` : '—';
-    const oName  = oCoord ? oCoord.name : (oIcao || '—');
-    const dName  = dCoord ? dCoord.name : (dIcao || 'Unknown destination');
+    if (isAirborne) {
+      const altKm  = altM   ? `${(altM/1000).toFixed(1)} km`   : '—';
+      const velKmh = speedMs ? `${Math.round(speedMs*3.6)} km/h` : '—';
+      const acIcon = L.divIcon({
+        html:`<div style="transform:rotate(${track}deg);font-size:22px;line-height:1;color:#fff;filter:drop-shadow(0 0 6px #00d4ff) drop-shadow(0 0 12px #00d4ff88)">✈</div>`,
+        className:'', iconSize:[22,22], iconAnchor:[11,11],
+      });
+      _fnMarker = L.marker([lat, lng], { icon: acIcon, zIndexOffset: 1000 });
+      _fnMarker.bindPopup(`
+        <div style="font-size:.9rem;font-weight:800;color:var(--accent)">✈ ${csFound}</div>
+        <div style="font-size:.76rem;color:var(--muted);margin-top:5px">
+          <div style="color:var(--text);font-weight:600;margin-bottom:3px">${oName} → ${dName}</div>
+          <div>Altitude: <span style="color:var(--text)">${altKm}</span></div>
+          <div>Speed: <span style="color:var(--text)">${velKmh}</span></div>
+          <div>Heading: <span style="color:var(--text)">${Math.round(track)}°</span></div>
+          <div style="color:var(--muted);margin-top:3px">ICAO24: ${icao24}</div>
+          ${routeIsReal ? `<div style="color:#4caf50;margin-top:3px">✔ Real IFR airways route</div>` : ''}
+        </div>`);
+      flightSearchGroup.addLayer(_fnMarker);
+    }
 
-    _fnMarker.bindPopup(`
-      <div class="flight-popup-title">✈ ${csFound}</div>
-      <div class="flight-popup-body" style="font-size:.76rem;color:var(--muted);margin-top:5px">
-        <div style="color:var(--text);font-weight:600;margin-bottom:3px">${oName} → ${dName}</div>
-        <div>Altitude: <span style="color:var(--text)">${altKm}</span></div>
-        <div>Speed: <span style="color:var(--text)">${velKmh}</span></div>
-        <div>Heading: <span style="color:var(--text)">${Math.round(track)}°</span></div>
-        <div>ICAO24: <span style="color:var(--muted)">${icao24}</span></div>
-        ${routeIsReal ? `<div style="color:#4caf50;margin-top:3px">✔ Real IFR airways route</div>` : ''}
-      </div>`);
-    flightSearchGroup.addLayer(_fnMarker);
-
-    // Fit view
+    // ── Fit map view ─────────────────────────────────────────────
     if (pts && pts.length >= 2) {
       map.fitBounds(L.polyline(pts).getBounds(), { padding: [60, 60] });
-    } else {
+    } else if (isAirborne) {
       map.flyTo([lat, lng], 7, { duration: 1.5 });
     }
 
     // ── Update result card ───────────────────────────────────────
     const airline = callsignToAirline(csFound) || callsignToAirline(raw.toUpperCase());
+    const altKmDisp  = altM   ? `${(altM/1000).toFixed(1)} km`   : '—';
+    const velKmhDisp = speedMs ? `${Math.round(speedMs*3.6)} km/h` : '—';
+
     document.getElementById('fn-cs').textContent = csFound;
-    document.getElementById('fn-airline').textContent = airline;
+    document.getElementById('fn-airline').textContent =
+      airline + (isAirborne ? '' : (lastSeenDate ? `  ·  last seen ${lastSeenDate}` : '  ·  not currently airborne'));
 
     const oLabel = oCoord ? `<span class="fn-ap">${oCoord.iata}</span>` : (oIcao ? `<span class="fn-ap">${oIcao}</span>` : '');
     const dLabel = dCoord ? `<span class="fn-ap">${dCoord.iata}</span>` : (dIcao ? `<span class="fn-ap">${dIcao}</span>` : '<span style="color:var(--muted)">destination unknown</span>');
@@ -1360,26 +1378,40 @@ async function trackFlightNumber() {
       oLabel + (oLabel ? ` <i class="fas fa-arrow-right" style="color:var(--muted);font-size:.65rem"></i> ` : '') + dLabel +
       (distKm ? `<span style="color:var(--muted);font-size:.68rem">&nbsp;${distKm.toLocaleString()} km</span>` : '');
 
-    document.getElementById('fn-stats-row').innerHTML =
-      `<div>Alt <span>${altKm}</span></div>` +
-      `<div>Speed <span>${velKmh}</span></div>` +
-      `<div>Hdg <span>${Math.round(track)}°</span></div>`;
+    if (isAirborne) {
+      document.getElementById('fn-stats-row').innerHTML =
+        `<div>Alt <span>${altKmDisp}</span></div>` +
+        `<div>Speed <span>${velKmhDisp}</span></div>` +
+        `<div>Hdg <span>${Math.round(track)}°</span></div>`;
+    } else {
+      document.getElementById('fn-stats-row').innerHTML =
+        `<div style="color:var(--orange)">⬛ On ground / between flights</div>`;
+    }
 
+    const statusTag = isAirborne
+      ? `<span class="fn-tag fn-tag-ok">● Airborne</span>`
+      : `<span class="fn-tag fn-tag-warn">⬛ On ground${lastSeenDate ? ' · ' + lastSeenDate : ''}</span>`;
     const routeTag = pts
-      ? `<span class="fn-tag ${routeIsReal ? 'fn-tag-ok' : 'fn-tag-warn'}">${routeIsReal ? '✔ Real IFR route' : '~ Great circle est.'}</span>`
+      ? ` <span class="fn-tag ${routeIsReal ? 'fn-tag-ok' : 'fn-tag-warn'}" style="margin-left:4px">${routeIsReal ? '✔ IFR route' : '~ Great circle'}</span>`
       : '';
-    const zones = pts ? pathCrossesZones(pts) : [];
     const riskTag = zones.length
-      ? `<span class="fn-tag fn-tag-warn" style="margin-left:4px">⚠ crosses ${zones.length} conflict zone${zones.length>1?'s':''}</span>`
-      : (pts ? `<span class="fn-tag fn-tag-ok" style="margin-left:4px">✓ clear of conflict zones</span>` : '');
-    document.getElementById('fn-tags').innerHTML = routeTag + riskTag;
+      ? `<span class="fn-tag fn-tag-warn" style="margin-left:4px">⚠ ${zones.length} conflict zone${zones.length>1?'s':''}</span>`
+      : (pts ? `<span class="fn-tag fn-tag-ok" style="margin-left:4px">✓ no conflict zones</span>` : '');
+    document.getElementById('fn-tags').innerHTML = statusTag + routeTag + riskTag;
 
     document.getElementById('fn-result-card').style.display = 'block';
-    document.getElementById('fn-status').textContent = '';
+    document.getElementById('fn-status').textContent = !isAirborne && pts
+      ? `Route shown from last recorded operation${lastSeenDate ? ' (' + lastSeenDate + ')' : ''}.`
+      : '';
 
     _activeFlightSearch = { callsign: raw, icao24, lat, lng };
-    document.getElementById('stat-flights').textContent = 1;
-    showToast(`Tracking ${csFound}${airline ? ' · ' + airline : ''}`, 'success');
+    document.getElementById('stat-flights').textContent = isAirborne ? 1 : 0;
+    showToast(
+      isAirborne
+        ? `Tracking ${csFound}${airline ? ' · ' + airline : ''}`
+        : `${csFound}${airline ? ' · ' + airline : ''} — on ground · route shown from last operation`,
+      isAirborne ? 'success' : 'info'
+    );
 
   } catch(e) {
     document.getElementById('fn-status').textContent = `⚠ Error: ${e.message}`;
