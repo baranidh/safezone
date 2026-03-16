@@ -1225,20 +1225,25 @@ async function fetchLiveState(icao24) {
   } catch { return null; }
 }
 
-// Fetch live aircraft from adsb.lol (broader coverage than OpenSky, incl. oceanic)
-// Returns the raw adsb.lol aircraft object, or null.
-async function fetchAdsbLol(callsign) {
+// Generic helper: fetch from any ADS-B Exchange-compatible API (adsb.lol, airplanes.live…)
+async function _fetchAdsbApi(url, source) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const ac = data.ac?.[0];
+  if (!ac || ac.lat == null || ac.lon == null) throw new Error('no position');
+  return { ...ac, _source: source };
+}
+
+// Try a callsign against all three community ADS-B feeds in parallel;
+// returns the first that has a live position, or null.
+async function fetchAdsbLive(callsign) {
   const cs = callsign.replace(/\s+/g, '').toUpperCase();
   try {
-    const res = await fetch(
-      `https://api.adsb.lol/v2/callsign/${cs}`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const ac = data.ac?.[0];
-    if (!ac || ac.lat == null || ac.lon == null) throw new Error('no position');
-    return ac;
+    return await Promise.any([
+      _fetchAdsbApi(`https://api.adsb.lol/v2/callsign/${cs}`,      'adsb.lol'),
+      _fetchAdsbApi(`https://api.airplanes.live/v2/callsign/${cs}`, 'airplanes.live'),
+    ]);
   } catch { return null; }
 }
 
@@ -1290,7 +1295,7 @@ async function trackFlightNumber() {
 
     const [record, adsbAc] = await Promise.all([
       fetchFlightRecord(raw),
-      Promise.any(variants.map(cs => fetchAdsbLol(cs))).catch(() => null),
+      Promise.any(variants.map(cs => fetchAdsbLive(cs))).catch(() => null),
     ]);
 
     if (!record && !adsbAc) {
