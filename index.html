@@ -867,62 +867,105 @@ async function plotFlightPath() {
 }
 
 async function fetchRouteFlights(pts, oCode, dCode, distKm) {
-  // Bounding box around the actual path (not a giant rectangle)
+  const O = AIRPORTS[oCode], D = AIRPORTS[dCode];
+
+  routeFlightsGroup.clearLayers();
+  document.getElementById('flights-list').innerHTML =
+    `<div class="flights-placeholder">⏳ Step 1/2 — checking departures from ${oCode}…</div>`;
+  document.getElementById('stat-flights').textContent = '…';
+
+  // ── Step 1: ask OpenSky which aircraft actually departed from origin ──────
+  // Window = estimated flight time (dist ÷ 870 km/h) + 30 min buffer for taxi/climb
+  const flightHours = distKm / 870 * 1.15 + 0.5;
+  const now   = Math.floor(Date.now() / 1000);
+  const begin = now - Math.round(flightHours * 3600);
+
+  let directIcao24s = null; // Set when the departure API succeeds
+
+  try {
+    const depRes = await fetch(
+      `https://opensky-network.org/api/flights/departure?airport=${O.icao}&begin=${begin}&end=${now}`,
+      { signal: AbortSignal.timeout(12000) }
+    );
+    if (depRes.ok) {
+      const departures = await depRes.json();
+      if (Array.isArray(departures) && departures.length > 0) {
+        // Keep flights whose estimated arrival is our destination, OR whose
+        // arrival airport is not yet determined (still en route).
+        const relevant = departures.filter(f =>
+          f.icao24 &&
+          (f.estArrivalAirport === D.icao || !f.estArrivalAirport)
+        );
+        if (relevant.length > 0) {
+          directIcao24s = new Set(relevant.map(f => f.icao24.toLowerCase()));
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('[SafeZone] Departure lookup failed:', e.message);
+    // directIcao24s stays null → positional fallback below
+  }
+
+  // ── Step 2: fetch live positions in the route bounding box ───────────────
+  document.getElementById('flights-list').innerHTML =
+    `<div class="flights-placeholder">⏳ Step 2/2 — fetching live positions…</div>`;
+
   const lats = pts.map(p=>p[0]), lngs = pts.map(p=>p[1]);
   const lamin = (Math.min(...lats)-2).toFixed(2);
   const lamax = (Math.max(...lats)+2).toFixed(2);
   const lomin = (Math.min(...lngs)-2).toFixed(2);
   const lomax = (Math.max(...lngs)+2).toFixed(2);
 
-  const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
-
-  routeFlightsGroup.clearLayers();
-  document.getElementById('flights-list').innerHTML = `<div class="flights-placeholder">⏳ Querying OpenSky Network for live aircraft…</div>`;
-  document.getElementById('stat-flights').textContent = '…';
-
-  // Thresholds scale with route distance so short hops aren't over-filtered
-  const isLongHaul = distKm > 1500;
-  const minAltM   = isLongHaul ? 8500 : 3500;   // long-haul cruise vs short-hop
-  const minSpeedMs = isLongHaul ? 185  : 100;    // ~665 km/h vs ~360 km/h
-  const headingTol = 65;                          // ± degrees from route bearing
-
-  const bearing = routeBearing(pts);
+  // Positional safety gates (applied even when we have departure data, to
+  // catch any stale icao24 hits that have since landed or diverted)
+  const isLongHaul  = distKm > 1500;
+  const minAltM     = isLongHaul ? 8500 : 3500;
+  const minSpeedMs  = isLongHaul ? 185  : 100;
+  const headingTol  = 65;
+  const bearing     = routeBearing(pts);
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(14000) });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const statesRes = await fetch(
+      `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`,
+      { signal: AbortSignal.timeout(14000) }
+    );
+    if (!statesRes.ok) throw new Error(`HTTP ${statesRes.status}`);
+    const data = await statesRes.json();
 
-    const states = (data.states||[]).filter(s => {
-      if (!s || s[8]) return false;              // skip nulls and on-ground
-      if (s[5]==null || s[6]==null) return false; // need position
-      // Altitude gate — removes regional/domestic traffic on long-haul queries
+    let states = (data.states || []).filter(s => {
+      if (!s || s[8]) return false;
+      if (s[5] == null || s[6] == null) return false;
       if (s[7] == null || s[7] < minAltM) return false;
-      // Speed gate — removes slow props and helicopters
       if (s[9] == null || s[9] < minSpeedMs) return false;
-      // Heading gate — aircraft must be flying roughly toward the destination
       if (s[10] != null && angleDiff(s[10], bearing) > headingTol) return false;
       return true;
     });
 
-    // Keep only aircraft within 50 km of the actual drawn path, sorted by proximity
+    // If the departure API gave us confirmed icao24s, restrict to those only.
+    // This is the direct-flight lock — no connecting aircraft can pass.
+    if (directIcao24s) {
+      states = states.filter(s => directIcao24s.has(s[0].toLowerCase()));
+    }
+
+    // Final proximity check: must be within 50 km of the actual drawn path
     const scored = states
       .map(s => ({ s, dist: distToPath(s[6], s[5], pts) }))
       .filter(x => x.dist < 50)
-      .sort((a,b) => a.dist - b.dist);
+      .sort((a, b) => a.dist - b.dist);
 
-    renderRouteFlights(scored.map(x => x.s), oCode, dCode);
+    renderRouteFlights(scored.map(x => x.s), oCode, dCode, !!directIcao24s);
   } catch(e) {
-    const errMsg = e.name==='TimeoutError'
+    const errMsg = e.name === 'TimeoutError'
       ? 'OpenSky request timed out. Try again.'
       : `Live flight data unavailable (${e.message})`;
-    document.getElementById('flights-list').innerHTML = `<div class="flights-placeholder" style="color:var(--orange)">⚠ ${errMsg}</div>`;
+    document.getElementById('flights-list').innerHTML =
+      `<div class="flights-placeholder" style="color:var(--orange)">⚠ ${errMsg}</div>`;
     document.getElementById('stat-flights').textContent = '—';
-    showToast('Could not fetch live flights','error');
+    showToast('Could not fetch live flights', 'error');
   }
 }
 
-function renderRouteFlights(flights, oCode, dCode) {
+function renderRouteFlights(flights, oCode, dCode, verifiedDirect) {
   routeFlightsGroup.clearLayers();
   document.getElementById('stat-flights').textContent = flights.length;
 
@@ -931,10 +974,9 @@ function renderRouteFlights(flights, oCode, dCode) {
     className:'', iconSize:[14,14], iconAnchor:[7,7],
   });
 
-  // Cap map icons at 25 closest flights; sidebar list shows up to 15
   flights.slice(0,25).forEach(s => {
     const cs  = (s[1]||'').trim()||'N/A';
-    const alt = s[7]  ? `${Math.round(s[7])}m` : '—';
+    const alt = s[7]  ? `${Math.round(s[7]/100)/10} km` : '—';
     const vel = s[9]  ? `${Math.round(s[9]*3.6)} km/h` : '—';
     const trk = s[10] || 0;
     const m   = L.marker([s[6],s[5]], { icon: planeIcon(trk) });
@@ -946,20 +988,28 @@ function renderRouteFlights(flights, oCode, dCode) {
         <div>Speed: <span style="color:var(--text)">${vel}</span></div>
         <div>Heading: <span style="color:var(--text)">${Math.round(trk)}°</span></div>
         <div>ICAO24: <span style="color:var(--muted)">${s[0]}</span></div>
+        ${verifiedDirect ? `<div style="color:#4caf50;margin-top:3px">✔ Confirmed departed ${oCode}</div>` : ''}
       </div>`);
     routeFlightsGroup.addLayer(m);
   });
 
   const listEl = document.getElementById('flights-list');
   if(flights.length===0){
-    listEl.innerHTML = `<div class="flights-placeholder">No airliners detected within 50 km of the ${oCode}→${dCode} corridor at cruise altitude right now.</div>`;
-    showToast(`No cruise-altitude aircraft found near ${oCode}→${dCode}`,'info');
+    const reason = verifiedDirect
+      ? `No aircraft confirmed departed ${oCode} and currently airborne toward ${dCode}.`
+      : `No airliners at cruise altitude detected in the ${oCode}→${dCode} corridor right now.`;
+    listEl.innerHTML = `<div class="flights-placeholder">${reason}</div>`;
+    showToast(`No direct flights found on ${oCode}→${dCode}`,'info');
     return;
   }
 
-  // Header note so users understand what they're seeing
-  const note = `<div style="font-size:.65rem;color:var(--muted);padding:3px 2px 5px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:4px">
-    Live ADS-B · cruise altitude · heading toward ${dCode}
+  const sourceLabel = verifiedDirect
+    ? `✔ Confirmed direct departures from ${oCode} · live ADS-B positions`
+    : `~ Approximate — departure data unavailable · cruise-altitude filter applied`;
+  const sourceColor = verifiedDirect ? '#4caf50' : 'var(--muted)';
+
+  const note = `<div style="font-size:.65rem;color:${sourceColor};padding:3px 2px 5px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:4px">
+    ${sourceLabel}
   </div>`;
 
   listEl.innerHTML = note + flights.slice(0,15).map(s => {
@@ -974,7 +1024,9 @@ function renderRouteFlights(flights, oCode, dCode) {
       </div>
     </div>`;
   }).join('');
-  showToast(`${flights.length} airliner${flights.length!==1?'s':''} detected in ${oCode}→${dCode} corridor`,'success');
+
+  const label = verifiedDirect ? 'direct flight' : 'aircraft';
+  showToast(`${flights.length} ${label}${flights.length!==1?'s':''} on ${oCode}→${dCode}`,'success');
 }
 
 function clearFlightPath() {
