@@ -581,7 +581,7 @@
 // ══════════════════════════════════════════════════════════════
 //  VERSION — increment on every pull request
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v1.0.7';
+const APP_VERSION = 'v1.0.8';
 
 // ══════════════════════════════════════════════════════════════
 //  AIRPORTS
@@ -1342,8 +1342,18 @@ async function fetchAirlabs(rawCallsign, validCallsigns) {
         : `https://airlabs.co/api/v9/flights?${param}=${encodeURIComponent(cs)}&api_key=${encodeURIComponent(key)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) console.warn('[SafeZone] AirLabs: invalid API key');
-        if (res.status === 429) console.warn('[SafeZone] AirLabs: rate limited');
+        if (res.status === 401 || res.status === 403) {
+          console.warn('[SafeZone] AirLabs: invalid API key');
+          showToast(proxyUrl ? 'Proxy: API key not configured on worker' : 'AirLabs: invalid API key — check your key', 'error');
+        }
+        if (res.status === 429) {
+          console.warn('[SafeZone] AirLabs: rate limited');
+          showToast('AirLabs: rate limited — try again in a minute', 'error');
+        }
+        if (res.status === 502) {
+          console.warn('[SafeZone] Proxy: upstream request failed');
+          showToast('Proxy: could not reach AirLabs — check worker logs', 'error');
+        }
         continue;
       }
       const data = await res.json();
@@ -1388,7 +1398,7 @@ function saveAirlabsKey() {
   status.innerHTML = '<span style="color:#39ff82">✓ Key saved — will be used for next flight search</span>';
 }
 
-function saveProxyUrl() {
+async function saveProxyUrl() {
   const input = document.getElementById('proxy-url-input');
   const status = document.getElementById('proxy-url-status');
   const url = input.value.trim();
@@ -1401,8 +1411,29 @@ function saveProxyUrl() {
     status.innerHTML = '<span style="color:#ff3b3b">Invalid URL — must start with https://</span>';
     return;
   }
-  setProxyUrl(url);
-  status.innerHTML = '<span style="color:#39ff82">✓ Proxy saved — API key is no longer needed locally</span>';
+  // Verify proxy is reachable via /health endpoint
+  status.innerHTML = '<span style="color:var(--muted)">Testing proxy connection…</span>';
+  try {
+    const cleanUrl = url.replace(/\/+$/, '');
+    const res = await fetch(`${cleanUrl}/health`, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) {
+      status.innerHTML = `<span style="color:#ff3b3b">Proxy returned HTTP ${res.status} — check the URL</span>`;
+      return;
+    }
+    const data = await res.json();
+    if (data.status !== 'ok') {
+      status.innerHTML = '<span style="color:#ff3b3b">Proxy responded but health check failed</span>';
+      return;
+    }
+    setProxyUrl(cleanUrl);
+    status.innerHTML = '<span style="color:#39ff82">✓ Proxy verified & saved — API key is no longer needed locally</span>';
+  } catch(e) {
+    if (e.name === 'TimeoutError') {
+      status.innerHTML = '<span style="color:#ff3b3b">Proxy timed out — is the URL correct?</span>';
+    } else {
+      status.innerHTML = '<span style="color:#ff3b3b">Cannot reach proxy — check URL and CORS settings</span>';
+    }
+  }
 }
 
 // Resolve ICAO airport code → { lat, lng, name, iata } — local table first
