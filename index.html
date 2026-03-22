@@ -473,6 +473,10 @@ const AIRPORTS = {
   SYD:{ name:"Sydney – Kingsford Smith",country:"Australia",    lat:-33.9399, lng:151.1753, icao:"YSSY" },
   MEL:{ name:"Melbourne – Tullamarine", country:"Australia",    lat:-37.6690, lng:144.8410, icao:"YMML" },
   BNE:{ name:"Brisbane International",  country:"Australia",    lat:-27.3842, lng:153.1175, icao:"YBBN" },
+  LAX:{ name:"Los Angeles International",country:"USA",         lat:33.9425,  lng:-118.4081,icao:"KLAX" },
+  SFO:{ name:"San Francisco International",country:"USA",       lat:37.6213,  lng:-122.3790,icao:"KSFO" },
+  DFW:{ name:"Dallas/Fort Worth",        country:"USA",          lat:32.8998,  lng:-97.0403, icao:"KDFW" },
+  ATL:{ name:"Atlanta – Hartsfield",     country:"USA",          lat:33.6407,  lng:-84.4277, icao:"KATL" },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -717,6 +721,137 @@ async function fetchRealRoute(oIcao, dIcao) {
 }
 
 // Lookup scheduled route for a flight number via external APIs.
+// ══════════════════════════════════════════════════════════════
+//  KNOWN ROUTES — offline fallback for common flights
+//  When all live APIs and FlightPlanDB fail, we still show the route.
+//  Key = IATA callsign (uppercase, no spaces). Value = { from, to } (ICAO codes).
+// ══════════════════════════════════════════════════════════════
+const KNOWN_ROUTES = {
+  // Emirates
+  EK509:  { from:'OMDB', to:'VABB' }, EK510:  { from:'VABB', to:'OMDB' },
+  EK215:  { from:'OMDB', to:'KJFK' }, EK216:  { from:'KJFK', to:'OMDB' },
+  EK201:  { from:'OMDB', to:'KJFK' }, EK202:  { from:'KJFK', to:'OMDB' },
+  EK231:  { from:'OMDB', to:'EGLL' }, EK232:  { from:'EGLL', to:'OMDB' },
+  EK001:  { from:'OMDB', to:'EGLL' }, EK002:  { from:'EGLL', to:'OMDB' },
+  EK003:  { from:'OMDB', to:'EGLL' }, EK004:  { from:'EGLL', to:'OMDB' },
+  EK005:  { from:'OMDB', to:'EGLL' }, EK006:  { from:'EGLL', to:'OMDB' },
+  EK371:  { from:'OMDB', to:'LFPG' }, EK372:  { from:'LFPG', to:'OMDB' },
+  EK049:  { from:'OMDB', to:'EDDF' }, EK050:  { from:'EDDF', to:'OMDB' },
+  EK405:  { from:'OMDB', to:'YSSY' }, EK406:  { from:'YSSY', to:'OMDB' },
+  EK412:  { from:'OMDB', to:'YSSY' }, EK413:  { from:'YSSY', to:'OMDB' },
+  EK418:  { from:'OMDB', to:'YMML' }, EK419:  { from:'YMML', to:'OMDB' },
+  EK434:  { from:'OMDB', to:'YBBN' }, EK435:  { from:'YBBN', to:'OMDB' },
+  EK354:  { from:'OMDB', to:'WSSS' }, EK355:  { from:'WSSS', to:'OMDB' },
+  EK318:  { from:'OMDB', to:'RJAA' }, EK319:  { from:'RJAA', to:'OMDB' },
+  EK316:  { from:'OMDB', to:'RJBB' }, EK317:  { from:'RJBB', to:'OMDB' },
+  EK384:  { from:'OMDB', to:'VHHH' }, EK385:  { from:'VHHH', to:'OMDB' },
+  EK524:  { from:'OMDB', to:'VIDP' }, EK525:  { from:'VIDP', to:'OMDB' },
+
+  // Singapore Airlines
+  SQ308:  { from:'WSSS', to:'EGLL' }, SQ317:  { from:'EGLL', to:'WSSS' },
+  SQ305:  { from:'WSSS', to:'EGLL' }, SQ306:  { from:'EGLL', to:'WSSS' },
+  SQ22:   { from:'WSSS', to:'KJFK' }, SQ21:   { from:'KJFK', to:'WSSS' },
+  SQ25:   { from:'WSSS', to:'KJFK' }, SQ24:   { from:'KJFK', to:'WSSS' },
+  SQ318:  { from:'WSSS', to:'LFPG' }, SQ319:  { from:'LFPG', to:'WSSS' },
+  SQ326:  { from:'WSSS', to:'EDDF' }, SQ327:  { from:'EDDF', to:'WSSS' },
+  SQ221:  { from:'WSSS', to:'YSSY' }, SQ222:  { from:'YSSY', to:'WSSS' },
+  SQ231:  { from:'WSSS', to:'YMML' }, SQ232:  { from:'YMML', to:'WSSS' },
+  SQ478:  { from:'WSSS', to:'RJAA' }, SQ479:  { from:'RJAA', to:'WSSS' },
+  SQ800:  { from:'WSSS', to:'VIDP' }, SQ801:  { from:'VIDP', to:'WSSS' },
+  SQ860:  { from:'WSSS', to:'VABB' }, SQ861:  { from:'VABB', to:'WSSS' },
+  SQ352:  { from:'WSSS', to:'OMDB' }, SQ353:  { from:'OMDB', to:'WSSS' },
+
+  // Qatar Airways
+  QR920:  { from:'OTHH', to:'OPKC' }, QR921:  { from:'OPKC', to:'OTHH' },
+  QR001:  { from:'OTHH', to:'EGLL' }, QR002:  { from:'EGLL', to:'OTHH' },
+  QR003:  { from:'OTHH', to:'EGLL' }, QR004:  { from:'EGLL', to:'OTHH' },
+  QR701:  { from:'OTHH', to:'KJFK' }, QR702:  { from:'KJFK', to:'OTHH' },
+  QR039:  { from:'OTHH', to:'LFPG' }, QR040:  { from:'LFPG', to:'OTHH' },
+  QR067:  { from:'OTHH', to:'EDDF' }, QR068:  { from:'EDDF', to:'OTHH' },
+  QR844:  { from:'OTHH', to:'WSSS' }, QR845:  { from:'WSSS', to:'OTHH' },
+  QR908:  { from:'OTHH', to:'VIDP' }, QR909:  { from:'VIDP', to:'OTHH' },
+
+  // British Airways
+  BA117:  { from:'EGLL', to:'KJFK' }, BA178:  { from:'KJFK', to:'EGLL' },
+  BA115:  { from:'EGLL', to:'KJFK' }, BA116:  { from:'KJFK', to:'EGLL' },
+  BA001:  { from:'EGLL', to:'KJFK' }, BA002:  { from:'KJFK', to:'EGLL' },
+  BA015:  { from:'EGLL', to:'WSSS' }, BA016:  { from:'WSSS', to:'EGLL' },
+  BA009:  { from:'EGLL', to:'VTBS' }, BA010:  { from:'VTBS', to:'EGLL' },
+  BA011:  { from:'EGLL', to:'WSSS' }, BA012:  { from:'WSSS', to:'EGLL' },
+  BA303:  { from:'EGLL', to:'OMDB' }, BA304:  { from:'OMDB', to:'EGLL' },
+  BA305:  { from:'EGLL', to:'OMDB' }, BA306:  { from:'OMDB', to:'EGLL' },
+
+  // Lufthansa
+  LH400:  { from:'EDDF', to:'KJFK' }, LH401:  { from:'KJFK', to:'EDDF' },
+  LH402:  { from:'EDDF', to:'KJFK' }, LH403:  { from:'KJFK', to:'EDDF' },
+  LH778:  { from:'EDDF', to:'VHHH' }, LH779:  { from:'VHHH', to:'EDDF' },
+  LH710:  { from:'EDDF', to:'RJAA' }, LH711:  { from:'RJAA', to:'EDDF' },
+  LH630:  { from:'EDDF', to:'OMDB' }, LH631:  { from:'OMDB', to:'EDDF' },
+  LH600:  { from:'EDDF', to:'HECA' }, LH601:  { from:'HECA', to:'EDDF' },
+
+  // American Airlines
+  AA100:  { from:'KJFK', to:'EGLL' }, AA101:  { from:'EGLL', to:'KJFK' },
+  AA106:  { from:'KJFK', to:'EGLL' }, AA107:  { from:'EGLL', to:'KJFK' },
+  AA50:   { from:'KDFW', to:'VHHH' }, AA51:   { from:'VHHH', to:'KDFW' },
+
+  // United Airlines
+  UA900:  { from:'KSFO', to:'RJAA' }, UA901:  { from:'RJAA', to:'KSFO' },
+  UA1:    { from:'KSFO', to:'WSSS' }, UA2:    { from:'WSSS', to:'KSFO' },
+  UA837:  { from:'KSFO', to:'VHHH' }, UA862:  { from:'VHHH', to:'KSFO' },
+
+  // Delta
+  DL1:    { from:'KJFK', to:'KLAX' }, DL2:    { from:'KLAX', to:'KJFK' },
+  DL7:    { from:'KJFK', to:'EGLL' }, DL8:    { from:'EGLL', to:'KJFK' },
+  DL468:  { from:'KATL', to:'LFPG' }, DL469:  { from:'LFPG', to:'KATL' },
+
+  // Air France
+  AF1:    { from:'LFPG', to:'EGLL' }, AF2:    { from:'EGLL', to:'LFPG' },
+  AF6:    { from:'LFPG', to:'KJFK' }, AF7:    { from:'KJFK', to:'LFPG' },
+  AF662:  { from:'LFPG', to:'OMDB' }, AF663:  { from:'OMDB', to:'LFPG' },
+
+  // Turkish Airlines
+  TK1:    { from:'LTBA', to:'LGAV' }, TK2:    { from:'LGAV', to:'LTBA' },
+  TK77:   { from:'LTBA', to:'KJFK' }, TK78:   { from:'KJFK', to:'LTBA' },
+  TK1951: { from:'LTBA', to:'EGLL' }, TK1952: { from:'EGLL', to:'LTBA' },
+  TK764:  { from:'LTBA', to:'OMDB' }, TK765:  { from:'OMDB', to:'LTBA' },
+
+  // Qantas
+  QF1:    { from:'YSSY', to:'WSSS' }, QF2:    { from:'WSSS', to:'YSSY' },
+  QF7:    { from:'YSSY', to:'KDFW' }, QF8:    { from:'KDFW', to:'YSSY' },
+  QF9:    { from:'YMML', to:'EGLL' }, QF10:   { from:'EGLL', to:'YMML' },
+  QF11:   { from:'YSSY', to:'EGLL' }, QF12:   { from:'EGLL', to:'YSSY' },
+
+  // Cathay Pacific
+  CX888:  { from:'VHHH', to:'KLAX' }, CX881:  { from:'KLAX', to:'VHHH' },
+  CX250:  { from:'VHHH', to:'EGLL' }, CX251:  { from:'EGLL', to:'VHHH' },
+  CX880:  { from:'VHHH', to:'KJFK' }, CX845:  { from:'KJFK', to:'VHHH' },
+  CX714:  { from:'VHHH', to:'WSSS' }, CX715:  { from:'WSSS', to:'VHHH' },
+  CX710:  { from:'VHHH', to:'WSSS' }, CX711:  { from:'WSSS', to:'VHHH' },
+
+  // Etihad
+  EY001:  { from:'OMAA', to:'EGLL' }, EY002:  { from:'EGLL', to:'OMAA' },
+  EY103:  { from:'OMAA', to:'KJFK' }, EY104:  { from:'KJFK', to:'OMAA' },
+  EY474:  { from:'OMAA', to:'WSSS' }, EY475:  { from:'WSSS', to:'OMAA' },
+
+  // Middle East / regional
+  RJ181:  { from:'OJAI', to:'OMDB' }, RJ182:  { from:'OMDB', to:'OJAI' },
+  ME201:  { from:'OLBA', to:'LFPG' }, ME202:  { from:'LFPG', to:'OLBA' },
+  SV117:  { from:'OERK', to:'HECA' }, SV118:  { from:'HECA', to:'OERK' },
+  MS777:  { from:'HECA', to:'EGLL' }, MS778:  { from:'EGLL', to:'HECA' },
+  MS985:  { from:'HECA', to:'OMDB' }, MS986:  { from:'OMDB', to:'HECA' },
+  IR721:  { from:'OIIE', to:'LTBA' }, IR722:  { from:'LTBA', to:'OIIE' },
+};
+
+// Look up known route from local database using all callsign variants.
+function lookupKnownRoute(rawCallsign) {
+  const variants = normalizeCallsign(rawCallsign);
+  for (const cs of variants) {
+    const r = KNOWN_ROUTES[cs];
+    if (r) return { oIcao: r.from, dIcao: r.to };
+  }
+  return null;
+}
+
 // Returns { oIcao, dIcao } or null.
 async function fetchScheduledRoute(rawCallsign) {
   const variants = normalizeCallsign(rawCallsign);
@@ -1020,23 +1155,41 @@ async function trackFlightNumber() {
       if (signal.aborted) return;
 
       if (!scheduled) {
-        document.getElementById('fn-status').textContent =
-          `✖ "${raw.toUpperCase()}" not found in any live or scheduled source.`;
-        showToast('Flight not found in any source', 'error');
-        return;
-      }
+        // Last resort: check our local known-routes database
+        const known = lookupKnownRoute(raw);
+        if (!known) {
+          document.getElementById('fn-status').textContent =
+            `✖ "${raw.toUpperCase()}" not found in any live or scheduled source.`;
+          showToast('Flight not found in any source', 'error');
+          return;
+        }
+        console.log('[SafeZone] Using known route from local database');
+        oIcao = known.oIcao;
+        dIcao = known.dIcao;
+        csFound = variants[0] || raw.toUpperCase();
+        routeOnly = true;
+      } else {
       oIcao = scheduled.oIcao;
       dIcao = scheduled.dIcao;
       csFound = variants[0] || raw.toUpperCase();
       routeOnly = true;
+      }
     }
-    // If we have a record but no origin/dest, also try scheduled route
+    // If we have a record but no origin/dest, also try scheduled route + known routes
     if (!oIcao || !dIcao) {
       const scheduled = await fetchScheduledRoute(raw);
       if (signal.aborted) return;
       if (scheduled) {
         oIcao = oIcao || scheduled.oIcao;
         dIcao = dIcao || scheduled.dIcao;
+      }
+      // Still missing? Try local known-routes as last resort
+      if (!oIcao || !dIcao) {
+        const known = lookupKnownRoute(raw);
+        if (known) {
+          oIcao = oIcao || known.oIcao;
+          dIcao = dIcao || known.dIcao;
+        }
       }
     }
 

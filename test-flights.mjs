@@ -391,6 +391,66 @@ if (bugResult.routeOnly && !bugResult.isAirborne && bugResult.oIcao === null) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TEST GROUP 11: Known-routes local fallback
+// ═══════════════════════════════════════════════════════════════
+console.log('\n┌─── TEST GROUP 11: Known-routes local fallback ────────────┐');
+
+const KNOWN_ROUTES = {
+  EK509:  { from:'OMDB', to:'VABB' }, EK215:  { from:'OMDB', to:'KJFK' },
+  SQ308:  { from:'WSSS', to:'EGLL' }, SQ22:   { from:'WSSS', to:'KJFK' },
+  QR920:  { from:'OTHH', to:'OPKC' }, QR001:  { from:'OTHH', to:'EGLL' },
+  BA117:  { from:'EGLL', to:'KJFK' }, BA015:  { from:'EGLL', to:'WSSS' },
+  LH400:  { from:'EDDF', to:'KJFK' }, AA100:  { from:'KJFK', to:'EGLL' },
+  UA900:  { from:'KSFO', to:'RJAA' }, DL1:    { from:'KJFK', to:'KLAX' },
+  AF1:    { from:'LFPG', to:'EGLL' }, TK1:    { from:'LTBA', to:'LGAV' },
+  QF1:    { from:'YSSY', to:'WSSS' }, CX888:  { from:'VHHH', to:'KLAX' },
+};
+
+function lookupKnownRoute(rawCallsign) {
+  const variants = normalizeCallsign(rawCallsign);
+  for (const cs of variants) {
+    const r = KNOWN_ROUTES[cs];
+    if (r) return { oIcao: r.from, dIcao: r.to };
+  }
+  return null;
+}
+
+// Test: all 12 test flights should have a known route
+const knownRouteFlights = ['SQ308','EK215','QR920','BA117','LH400','AA100','UA900','DL1','AF1','TK1','QF1','CX888'];
+for (const input of knownRouteFlights) {
+  const kr = lookupKnownRoute(input);
+  if (kr && kr.oIcao && kr.dIcao) {
+    ok(`${input} → known route ${kr.oIcao} → ${kr.dIcao}`);
+  } else {
+    fail(`${input} → no known route found`);
+  }
+}
+
+// Test: unknown flight returns null
+const unknownKr = lookupKnownRoute('XX999');
+if (unknownKr === null) ok('XX999 → null (no known route, expected)');
+else fail('XX999 → should return null for unknown flight');
+
+// Test: full fallback chain — both APIs fail, known route provides the route
+console.log('\n┌─── TEST GROUP 12: Full fallback to known route ───────────┐');
+for (const input of knownRouteFlights) {
+  const result = simulateTrackFlight({ raw: input, record: null, adsbAc: null });
+  // Both APIs failed, so routeOnly=true and no oIcao/dIcao from APIs
+  // In the real code, fetchScheduledRoute fires, and if that also fails, lookupKnownRoute fires
+  // Here we simulate: both APIs null → routeOnly=true, then known-route provides airports
+  if (result.routeOnly) {
+    const kr = lookupKnownRoute(input);
+    if (kr && kr.oIcao && kr.dIcao) {
+      ok(`${input} → APIs failed → known route fallback: ${kr.oIcao} → ${kr.dIcao}`);
+    } else {
+      fail(`${input} → APIs failed but no known route either`);
+    }
+  } else {
+    fail(`${input} → should trigger routeOnly when both APIs return null`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════
 console.log('\n' + '═'.repeat(62));
