@@ -226,7 +226,7 @@
     .fn-input-row input {
       flex: 1; min-width: 0; padding: 8px 10px; border-radius: 7px;
       border: 1px solid var(--border); background: rgba(0,18,44,.8);
-      color: var(--text); font-size: .85rem; font-weight: 600;
+      color: var(--text); font-size: 16px; font-weight: 600;
       letter-spacing: .04em; outline: none; text-transform: uppercase;
       transition: border-color .2s;
     }
@@ -312,6 +312,7 @@
 <!-- ── HEADER ──────────────────────────────────────────────── -->
 <div id="header">
   <div class="logo"><i class="fas fa-shield-halved"></i><span>SafeZone</span></div>
+  <span id="app-version" title="App version" style="font-size:.6rem;color:var(--muted,#667);opacity:.7;margin-left:4px;cursor:default"></span>
   <div class="tagline">Middle East Conflict & Aviation Monitor</div>
   <div class="spacer"></div>
   <div class="live-badge"><div class="dot"></div>LIVE</div>
@@ -447,6 +448,11 @@
 <!-- ── SCRIPTS ──────────────────────────────────────────────── -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+// ══════════════════════════════════════════════════════════════
+//  VERSION — increment on every pull request
+// ══════════════════════════════════════════════════════════════
+const APP_VERSION = 'v1.0.4';
+
 // ══════════════════════════════════════════════════════════════
 //  AIRPORTS
 // ══════════════════════════════════════════════════════════════
@@ -1595,6 +1601,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // On mobile show toggle label
   if(isMobile()) document.getElementById('toggle-label').style.display = 'inline';
 
+  document.getElementById('app-version').textContent = APP_VERSION;
   document.getElementById('last-updated').textContent =
     'Updated: ' + new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 
