@@ -296,28 +296,61 @@
       }
     }
 
-    /* locate-me button */
+    /* ── AM I IN DANGER? button ─────────────────────────── */
     #locate-me-btn {
-      position: fixed; bottom: 110px; right: 14px; z-index: 1000;
-      width: 42px; height: 42px; border-radius: 50%;
-      border: 1px solid var(--border);
-      background: rgba(10,16,34,.92); color: var(--text);
-      backdrop-filter: blur(10px); cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.1rem; box-shadow: 0 2px 10px rgba(0,0,0,.4);
-      transition: background .2s, color .2s;
+      position: fixed; bottom: 80px; right: 14px; z-index: 1000;
+      border-radius: 16px; border: 2px solid var(--red);
+      background: linear-gradient(135deg, rgba(255,59,59,.25) 0%, rgba(255,107,53,.18) 100%);
+      color: #fff; backdrop-filter: blur(14px); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 14px 22px;
+      font-size: .95rem; font-weight: 800; letter-spacing: .04em;
+      box-shadow: 0 0 20px rgba(255,59,59,.25), 0 4px 15px rgba(0,0,0,.5);
+      transition: all .3s ease;
+      text-transform: uppercase;
+      animation: danger-glow 2.5s ease-in-out infinite;
     }
-    #locate-me-btn:hover { background: rgba(0,212,255,.18); color: var(--accent); }
-    #locate-me-btn.active { color: #39ff82; border-color: #39ff82; }
+    #locate-me-btn i { font-size: 1.2rem; }
+    #locate-me-btn .btn-subtitle {
+      font-size: .58rem; font-weight: 500; opacity: .8;
+      letter-spacing: .02em; text-transform: none;
+      display: block; margin-top: 1px;
+    }
+    #locate-me-btn:hover {
+      background: linear-gradient(135deg, rgba(255,59,59,.45) 0%, rgba(255,107,53,.35) 100%);
+      box-shadow: 0 0 35px rgba(255,59,59,.45), 0 4px 20px rgba(0,0,0,.5);
+      transform: scale(1.04);
+    }
+    #locate-me-btn:active { transform: scale(0.97); }
+    #locate-me-btn.active {
+      border-color: #39ff82;
+      background: linear-gradient(135deg, rgba(57,255,130,.2) 0%, rgba(0,212,255,.12) 100%);
+      box-shadow: 0 0 20px rgba(57,255,130,.25), 0 4px 15px rgba(0,0,0,.5);
+      animation: none;
+    }
+    #locate-me-btn.active .btn-label { display: none; }
+    #locate-me-btn.active .btn-safe { display: flex; }
+    #locate-me-btn .btn-safe { display: none; flex-direction: column; align-items: center; }
     #locate-me-btn.locating { animation: pulse-locate 1.2s infinite; }
     @keyframes pulse-locate {
       0%,100% { box-shadow: 0 0 0 0 rgba(0,212,255,.4); }
-      50% { box-shadow: 0 0 0 10px rgba(0,212,255,0); }
+      50% { box-shadow: 0 0 0 14px rgba(0,212,255,0); }
+    }
+    @keyframes danger-glow {
+      0%,100% { box-shadow: 0 0 20px rgba(255,59,59,.25), 0 4px 15px rgba(0,0,0,.5); }
+      50% { box-shadow: 0 0 35px rgba(255,59,59,.5), 0 4px 20px rgba(0,0,0,.5); }
+    }
+    @media (max-width: 700px) {
+      #locate-me-btn {
+        bottom: 70px; right: 10px; left: 10px;
+        padding: 16px 18px; font-size: 1rem;
+        border-radius: 14px;
+      }
     }
 
     /* locate-me info popup */
     #locate-info {
-      position: fixed; bottom: 160px; right: 14px; z-index: 1000;
+      position: fixed; bottom: 150px; right: 14px; z-index: 1000;
       width: 260px; background: rgba(10,16,34,.95);
       border: 1px solid var(--border); border-radius: 10px;
       padding: 10px 12px; backdrop-filter: blur(14px);
@@ -463,6 +496,18 @@
           <button onclick="saveAirlabsKey()" style="padding:5px 10px;border-radius:5px;border:1px solid var(--accent);background:rgba(0,212,255,.12);color:var(--accent);font-size:.68rem;cursor:pointer;white-space:nowrap">Save</button>
         </div>
         <div id="airlabs-key-status" style="font-size:.6rem;margin-top:3px;color:var(--muted)"></div>
+
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+          <label style="font-size:.68rem;font-weight:700;color:var(--text)">Proxy URL <span style="font-size:.58rem;color:var(--muted);font-weight:400">(optional)</span></label>
+          <div style="font-size:.6rem;color:var(--muted);margin:2px 0 5px">For shared/paid keys — see <code style="color:var(--accent)">cloudflare-worker-proxy.js</code></div>
+          <div style="display:flex;gap:4px">
+            <input id="proxy-url-input" type="url" placeholder="https://my-proxy.workers.dev"
+              style="flex:1;min-width:0;padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:rgba(0,18,44,.8);color:var(--text);font-size:.72rem;outline:none"
+            />
+            <button onclick="saveProxyUrl()" style="padding:5px 10px;border-radius:5px;border:1px solid var(--accent);background:rgba(0,212,255,.12);color:var(--accent);font-size:.68rem;cursor:pointer;white-space:nowrap">Save</button>
+          </div>
+          <div id="proxy-url-status" style="font-size:.6rem;margin-top:3px;color:var(--muted)"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -505,8 +550,16 @@
 </div>
 
 <!-- ── LOCATE ME ────────────────────────────────────────────── -->
-<button id="locate-me-btn" onclick="locateMe()" title="Show my location on the map">
-  <i class="fas fa-location-crosshairs"></i>
+<button id="locate-me-btn" onclick="locateMe()" title="Check if you're in a danger zone">
+  <i class="fas fa-triangle-exclamation"></i>
+  <div class="btn-label">
+    <span>Am I in Danger?</span>
+    <span class="btn-subtitle">Tap to check your GPS location</span>
+  </div>
+  <div class="btn-safe">
+    <span style="color:#39ff82">Location Active</span>
+    <span class="btn-subtitle">Tap to refresh</span>
+  </div>
 </button>
 <div id="locate-info">
   <div class="loc-title"><i class="fas fa-location-dot"></i> Your Location</div>
@@ -528,7 +581,7 @@
 // ══════════════════════════════════════════════════════════════
 //  VERSION — increment on every pull request
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v1.0.6';
+const APP_VERSION = 'v1.0.9';
 
 // ══════════════════════════════════════════════════════════════
 //  AIRPORTS
@@ -1264,13 +1317,18 @@ async function fetchAdsbLive(callsignOrVariants, validCallsigns) {
 
 // ── AirLabs API (free 1000 req/mo, key required) ────────────
 // Returns ADS-B-compatible object with position + route, or null.
+// Supports direct API key OR a Cloudflare Worker proxy URL.
 const AIRLABS_KEY_STORAGE = 'safezone_airlabs_key';
+const PROXY_URL_STORAGE   = 'safezone_proxy_url';
 function getAirlabsKey() { return (localStorage.getItem(AIRLABS_KEY_STORAGE) || '').trim(); }
 function setAirlabsKey(k) { localStorage.setItem(AIRLABS_KEY_STORAGE, (k || '').trim()); }
+function getProxyUrl()    { return (localStorage.getItem(PROXY_URL_STORAGE) || '').trim().replace(/\/+$/, ''); }
+function setProxyUrl(u)   { localStorage.setItem(PROXY_URL_STORAGE, (u || '').trim().replace(/\/+$/, '')); }
 
 async function fetchAirlabs(rawCallsign, validCallsigns) {
+  const proxyUrl = getProxyUrl();
   const key = getAirlabsKey();
-  if (!key) return null;  // no key configured
+  if (!proxyUrl && !key) return null;  // no key or proxy configured
 
   const variants = normalizeCallsign(rawCallsign);
   // AirLabs accepts flight_iata (e.g. SQ321) or flight_icao (e.g. SIA321)
@@ -1278,12 +1336,24 @@ async function fetchAirlabs(rawCallsign, validCallsigns) {
     const isIcao3 = /^[A-Z]{3}\d/.test(cs);
     const param = isIcao3 ? 'flight_icao' : 'flight_iata';
     try {
-      const res = await fetch(
-        `https://airlabs.co/api/v9/flights?${param}=${encodeURIComponent(cs)}&api_key=${encodeURIComponent(key)}`,
-        { signal: AbortSignal.timeout(8000) }
-      );
+      // Use proxy if configured, otherwise direct with API key
+      const url = proxyUrl
+        ? `${proxyUrl}/flights?${param}=${encodeURIComponent(cs)}`
+        : `https://airlabs.co/api/v9/flights?${param}=${encodeURIComponent(cs)}&api_key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) console.warn('[SafeZone] AirLabs: invalid API key');
+        if (res.status === 401 || res.status === 403) {
+          console.warn('[SafeZone] AirLabs: invalid API key');
+          showToast(proxyUrl ? 'Proxy: API key not configured on worker' : 'AirLabs: invalid API key — check your key', 'error');
+        }
+        if (res.status === 429) {
+          console.warn('[SafeZone] AirLabs: rate limited');
+          showToast('AirLabs: rate limited — try again in a minute', 'error');
+        }
+        if (res.status === 502) {
+          console.warn('[SafeZone] Proxy: upstream request failed');
+          showToast('Proxy: could not reach AirLabs — check worker logs', 'error');
+        }
         continue;
       }
       const data = await res.json();
@@ -1296,7 +1366,8 @@ async function fetchAirlabs(rawCallsign, validCallsigns) {
       if (!f) continue;
 
       // Normalize to ADS-B-compatible object
-      console.log('[SafeZone] AirLabs hit for', cs);
+      const src = proxyUrl ? 'AirLabs (proxy)' : 'AirLabs';
+      console.log(`[SafeZone] ${src} hit for`, cs);
       return {
         hex:       f.hex || null,
         flight:    f.flight_icao || f.flight_iata || cs,
@@ -1307,7 +1378,7 @@ async function fetchAirlabs(rawCallsign, validCallsigns) {
         track:     f.dir ?? null,
         from_icao: f.dep_icao || null,
         to_icao:   f.arr_icao || null,
-        _source:   'AirLabs',
+        _source:   src,
       };
     } catch(e) { console.debug('[SafeZone] AirLabs failed for', cs, e.message); }
   }
@@ -1325,6 +1396,44 @@ function saveAirlabsKey() {
   }
   setAirlabsKey(key);
   status.innerHTML = '<span style="color:#39ff82">✓ Key saved — will be used for next flight search</span>';
+}
+
+async function saveProxyUrl() {
+  const input = document.getElementById('proxy-url-input');
+  const status = document.getElementById('proxy-url-status');
+  const url = input.value.trim();
+  if (!url) {
+    setProxyUrl('');
+    status.innerHTML = '<span style="color:var(--muted)">Proxy removed — using direct API key</span>';
+    return;
+  }
+  if (!/^https?:\/\/.+/.test(url)) {
+    status.innerHTML = '<span style="color:#ff3b3b">Invalid URL — must start with https://</span>';
+    return;
+  }
+  // Verify proxy is reachable via /health endpoint
+  status.innerHTML = '<span style="color:var(--muted)">Testing proxy connection…</span>';
+  try {
+    const cleanUrl = url.replace(/\/+$/, '');
+    const res = await fetch(`${cleanUrl}/health`, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) {
+      status.innerHTML = `<span style="color:#ff3b3b">Proxy returned HTTP ${res.status} — check the URL</span>`;
+      return;
+    }
+    const data = await res.json();
+    if (data.status !== 'ok') {
+      status.innerHTML = '<span style="color:#ff3b3b">Proxy responded but health check failed</span>';
+      return;
+    }
+    setProxyUrl(cleanUrl);
+    status.innerHTML = '<span style="color:#39ff82">✓ Proxy verified & saved — API key is no longer needed locally</span>';
+  } catch(e) {
+    if (e.name === 'TimeoutError') {
+      status.innerHTML = '<span style="color:#ff3b3b">Proxy timed out — is the URL correct?</span>';
+    } else {
+      status.innerHTML = '<span style="color:#ff3b3b">Cannot reach proxy — check URL and CORS settings</span>';
+    }
+  }
 }
 
 // Resolve ICAO airport code → { lat, lng, name, iata } — local table first
@@ -1383,15 +1492,6 @@ async function trackFlightNumber() {
     let adsbAc = await fetchAdsbLive(variants, variants);
     if (signal.aborted) return;
 
-    // ── Step 1b: Try AirLabs if community feeds missed ──────────────
-    // AirLabs uses broader data sources (1000 free req/mo, key required).
-    // Only fires when community ADS-B returned nothing, to conserve quota.
-    if (!adsbAc && getAirlabsKey()) {
-      document.getElementById('fn-status').textContent = 'Trying AirLabs…';
-      adsbAc = await fetchAirlabs(raw, variants);
-      if (signal.aborted) return;
-    }
-
     // ── Step 2: Try OpenSky only if ADS-B didn't return route info ──
     // ADS-B gives live position but often lacks origin/dest airports.
     // OpenSky gives route history but is slow and rate-limited.
@@ -1413,7 +1513,7 @@ async function trackFlightNumber() {
 
     // Use only validated sources
     const validRecord = recordOk ? record : null;
-    const validAdsb   = adsbOk   ? adsbAc : null;
+    let   validAdsb   = adsbOk   ? adsbAc : null;
 
     let icao24  = validRecord?.icao24  || validAdsb?.hex   || null;
     let oIcao   = validRecord?.estDepartureAirport || validAdsb?.from_icao || validAdsb?.orig_icao || null;
@@ -1430,24 +1530,44 @@ async function trackFlightNumber() {
       if (signal.aborted) return;
 
       if (!scheduled) {
-        // Last resort: check our local known-routes database
-        const known = lookupKnownRoute(raw);
-        if (!known) {
-          document.getElementById('fn-status').textContent =
-            `✖ "${raw.toUpperCase()}" not found in any live or scheduled source.`;
-          showToast('Flight not found in any source', 'error');
-          return;
+        // ── Try AirLabs / proxy as paid fallback (after all free sources failed) ──
+        if (getAirlabsKey() || getProxyUrl()) {
+          document.getElementById('fn-status').textContent = 'Trying AirLabs…';
+          adsbAc = await fetchAirlabs(raw, variants);
+          if (signal.aborted) return;
+          if (adsbAc) {
+            // Re-validate the AirLabs result
+            const airlabsCs = (adsbAc.flight || '').trim().toUpperCase();
+            if (variants.includes(airlabsCs)) {
+              icao24 = adsbAc.hex || null;
+              oIcao  = adsbAc.from_icao || adsbAc.orig_icao || null;
+              dIcao  = adsbAc.to_icao   || adsbAc.dest_icao || null;
+              csFound = airlabsCs;
+              validAdsb = adsbAc;
+            }
+          }
         }
-        console.log('[SafeZone] Using known route from local database');
-        oIcao = known.oIcao;
-        dIcao = known.dIcao;
+
+        // Last resort: check our local known-routes database
+        if (!validAdsb) {
+          const known = lookupKnownRoute(raw);
+          if (!known) {
+            document.getElementById('fn-status').textContent =
+              `✖ "${raw.toUpperCase()}" not found in any live or scheduled source.`;
+            showToast('Flight not found in any source', 'error');
+            return;
+          }
+          console.log('[SafeZone] Using known route from local database');
+          oIcao = known.oIcao;
+          dIcao = known.dIcao;
+          csFound = variants[0] || raw.toUpperCase();
+          routeOnly = true;
+        }
+      } else {
+        oIcao = scheduled.oIcao;
+        dIcao = scheduled.dIcao;
         csFound = variants[0] || raw.toUpperCase();
         routeOnly = true;
-      } else {
-      oIcao = scheduled.oIcao;
-      dIcao = scheduled.dIcao;
-      csFound = variants[0] || raw.toUpperCase();
-      routeOnly = true;
       }
     }
     // If we have a record but no origin/dest, also try scheduled route + known routes
@@ -1742,7 +1862,7 @@ function locateMe() {
   }
   const btn = document.getElementById('locate-me-btn');
   btn.classList.add('locating');
-  showToast('Acquiring GPS position…', 'info');
+  showToast('Checking your location…', 'info');
 
   navigator.geolocation.getCurrentPosition(
     pos => {
@@ -1751,11 +1871,28 @@ function locateMe() {
       sessionStorage.setItem('safezone-my-loc', JSON.stringify({ lat, lng, acc: accuracy }));
       _showMyLocation(lat, lng, accuracy);
       map.flyTo([lat, lng], Math.max(map.getZoom(), 7), { duration: 1.2 });
-      showToast('Location acquired', 'success');
+
+      // Show contextual toast based on danger zone status
+      const insideZones = DANGER_ZONES.filter(z => haversineKm(lat, lng, z.lat, z.lng) < z.r);
+      const nearZones   = DANGER_ZONES.filter(z => {
+        const d = haversineKm(lat, lng, z.lat, z.lng);
+        return d >= z.r && d < z.r * 1.3;
+      });
+      if (insideZones.length) {
+        showToast('WARNING: You are inside a danger zone!', 'warn');
+      } else if (nearZones.length) {
+        showToast('Caution: You are near a danger zone', 'warn');
+      } else {
+        showToast('You are outside all danger zones', 'success');
+      }
     },
     err => {
       btn.classList.remove('locating');
-      const msgs = { 1:'Location permission denied', 2:'Position unavailable', 3:'Request timed out' };
+      const msgs = {
+        1:'Location permission denied — check Settings > Privacy > Location Services > Safari',
+        2:'Position unavailable — try again outdoors',
+        3:'Location request timed out — try again'
+      };
       showToast(msgs[err.code] || 'Could not get location', 'warn');
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
@@ -1882,6 +2019,13 @@ window.addEventListener('DOMContentLoaded', () => {
   if (savedKey) {
     document.getElementById('airlabs-key-input').value = savedKey;
     document.getElementById('airlabs-key-status').innerHTML = '<span style="color:#39ff82">✓ Key saved</span>';
+  }
+
+  // Initialize proxy URL input
+  const savedProxy = getProxyUrl();
+  if (savedProxy) {
+    document.getElementById('proxy-url-input').value = savedProxy;
+    document.getElementById('proxy-url-status').innerHTML = '<span style="color:#39ff82">✓ Proxy active</span>';
   }
 
   // Auto-dismiss data notice after 6s

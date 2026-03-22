@@ -10,17 +10,19 @@ SafeZone is a single-page web application that monitors Middle East conflict eve
 - **Map**: Leaflet.js (v1.9.4) with CartoDB dark tiles.
 - **Icons**: Font Awesome 6.5.
 - **Tests**: `test-flights.mjs` — 190 test cases for flight tracking logic (run with Node.js).
+- **Proxy**: `cloudflare-worker-proxy.js` — standalone Cloudflare Worker for proxying AirLabs API requests.
 
 ## Key Features
 
 - **Conflict Map**: 45+ strike events (2024–2026) with actor/severity/type filtering and interactive markers.
 - **8 Danger Zones**: Circular regions (Gaza, Lebanon, Beirut, Yemen, Red Sea, Israel, Syria, Iran) rendered as Leaflet circles with risk levels.
-- **Flight Tracking**: Multi-source live tracking with 5-layer fallback:
-  1. ADS-B (adsb.lol, airplanes.live) — real-time position
-  2. AirLabs API — alternative live tracking (user provides free API key)
-  3. OpenSky Network — historical flight records
-  4. Flight Plan Database — real IFR airway routes
-  5. Known Routes cache — 170+ pre-loaded airline routes (localStorage fallback)
+- **Flight Tracking**: Multi-source live tracking with 5-layer fallback (free sources first, paid last):
+  1. ADS-B (adsb.lol, airplanes.live) — free real-time position
+  2. OpenSky Network — free historical flight records
+  3. Flight Plan Database — free real IFR airway routes
+  4. AirLabs API — paid fallback via direct key or Cloudflare Worker proxy (only called after all free sources fail)
+  5. Known Routes cache — 170+ pre-loaded airline routes (localStorage offline fallback)
+- **Cloudflare Worker Proxy**: Optional CORS proxy (`cloudflare-worker-proxy.js`) for AirLabs API that keeps the API key secret server-side. Includes rate limiting (60 req/min/IP), health check endpoint, and input validation. The frontend verifies proxy connectivity on save and shows user-visible error toasts for proxy failures (401/403/429/502).
 - **Danger Zone Crossing Detection**: Automatically checks if a tracked flight's route passes through any danger zone using haversine distance.
 - **GPS Locate Me**: Browser geolocation button that shows the user's real-time position overlaid on the map, with warnings if inside or near danger zones.
 - **Filtering**: Strike type, actor, severity, and danger zone toggle.
@@ -42,7 +44,8 @@ SafeZone is a single-page web application that monitors Middle East conflict eve
 | Known routes cache (`KNOWN_ROUTES`) | 782–932 |
 | Haversine / great-circle math | 1000–1030 |
 | Callsign normalization | 1068–1087 |
-| Main flight tracker (`trackFlightNumber`) | 1300–1589 |
+| AirLabs + Proxy integration (`fetchAirlabs`, `saveProxyUrl`) | 1318–1420 |
+| Main flight tracker (`trackFlightNumber`) | 1420–1600 |
 | GPS Locate Me | locate-me section before TOAST |
 | Toast notifications | `showToast()` |
 | Boot / DOMContentLoaded | end of script |
@@ -57,3 +60,10 @@ SafeZone is a single-page web application that monitors Middle East conflict eve
 - Keep everything in the single `index.html` file — do not split into separate JS/CSS files.
 - Do not modify existing features when adding new ones unless explicitly asked.
 - Test file is `test-flights.mjs` — run with `node test-flights.mjs`.
+
+### Cloudflare Worker Proxy Setup
+1. Go to Cloudflare Dashboard → Workers & Pages → Create Worker.
+2. Paste the contents of `cloudflare-worker-proxy.js` into the editor.
+3. In Settings → Variables and Secrets, add `AIRLABS_API_KEY` as a **Secret** with your AirLabs key.
+4. Deploy. The worker URL (e.g. `https://safezone-proxy.<subdomain>.workers.dev`) goes into the "Proxy URL" field in the app's API Keys section.
+5. The proxy provides: `/health` (connectivity check), `/flights?flight_iata=XX123` (proxied AirLabs lookup), rate limiting, and CORS headers.
