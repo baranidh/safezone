@@ -567,7 +567,7 @@
 // ══════════════════════════════════════════════════════════════
 //  VERSION — increment on every pull request
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v1.1.2';
+const APP_VERSION = 'v1.1.3';
 
 // ══════════════════════════════════════════════════════════════
 //  AIRPORTS
@@ -1343,13 +1343,23 @@ async function fetchAirlabs(rawCallsign, validCallsigns) {
         continue;
       }
       const data = await res.json();
-      if (data.error) { console.warn('[SafeZone] AirLabs error:', data.error.message); continue; }
+      if (data.error) {
+        console.warn('[SafeZone] AirLabs error:', data.error.message);
+        showToast(`AirLabs: ${data.error.message}`, 'error');
+        continue;
+      }
       const flights = data.response;
-      if (!Array.isArray(flights) || !flights.length) continue;
+      if (!Array.isArray(flights) || !flights.length) {
+        console.log('[SafeZone] AirLabs: no flights returned for', cs, '— flight may not be airborne');
+        continue;
+      }
 
       // Find best match: must have position
       const f = flights.find(fl => fl.lat != null && fl.lng != null);
-      if (!f) continue;
+      if (!f) {
+        console.log('[SafeZone] AirLabs: flight found but no position data for', cs);
+        continue;
+      }
 
       // Normalize to ADS-B-compatible object
       const src = proxyUrl ? 'AirLabs (proxy)' : 'AirLabs';
@@ -1366,8 +1376,13 @@ async function fetchAirlabs(rawCallsign, validCallsigns) {
         to_icao:   f.arr_icao || null,
         _source:   src,
       };
-    } catch(e) { console.debug('[SafeZone] AirLabs failed for', cs, e.message); }
+    } catch(e) {
+      console.warn('[SafeZone] AirLabs failed for', cs, e.message);
+      showToast(`AirLabs: ${e.message}`, 'error');
+    }
   }
+  // Show feedback when AirLabs was reached but had no live data
+  showToast('AirLabs: flight not airborne or not tracked', 'info');
   return null;
 }
 
