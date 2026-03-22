@@ -497,6 +497,12 @@ const AIRPORTS = {
   SFO:{ name:"San Francisco International",country:"USA",       lat:37.6213,  lng:-122.3790,icao:"KSFO" },
   DFW:{ name:"Dallas/Fort Worth",        country:"USA",          lat:32.8998,  lng:-97.0403, icao:"KDFW" },
   ATL:{ name:"Atlanta – Hartsfield",     country:"USA",          lat:33.6407,  lng:-84.4277, icao:"KATL" },
+  KUL:{ name:"Kuala Lumpur – KLIA",     country:"Malaysia",      lat:2.7456,   lng:101.7099, icao:"WMKK" },
+  ICN:{ name:"Seoul – Incheon",         country:"South Korea",   lat:37.4602,  lng:126.4407, icao:"RKSI" },
+  PEK:{ name:"Beijing – Capital",       country:"China",         lat:40.0799,  lng:116.6031, icao:"ZBAA" },
+  PVG:{ name:"Shanghai – Pudong",       country:"China",         lat:31.1443,  lng:121.8083, icao:"ZSPD" },
+  CGK:{ name:"Jakarta – Soekarno-Hatta",country:"Indonesia",     lat:-6.1256,  lng:106.6559, icao:"WIII" },
+  MNL:{ name:"Manila – Ninoy Aquino",   country:"Philippines",   lat:14.5086,  lng:121.0197, icao:"RPLL" },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -770,16 +776,22 @@ const KNOWN_ROUTES = {
   // Singapore Airlines
   SQ308:  { from:'WSSS', to:'EGLL' }, SQ317:  { from:'EGLL', to:'WSSS' },
   SQ305:  { from:'WSSS', to:'EGLL' }, SQ306:  { from:'EGLL', to:'WSSS' },
+  SQ321:  { from:'WSSS', to:'EGLL' }, SQ322:  { from:'EGLL', to:'WSSS' },
+  SQ319:  { from:'WSSS', to:'EGLL' }, SQ320:  { from:'EGLL', to:'WSSS' },
   SQ22:   { from:'WSSS', to:'KJFK' }, SQ21:   { from:'KJFK', to:'WSSS' },
   SQ25:   { from:'WSSS', to:'KJFK' }, SQ24:   { from:'KJFK', to:'WSSS' },
-  SQ318:  { from:'WSSS', to:'LFPG' }, SQ319:  { from:'LFPG', to:'WSSS' },
+  SQ318:  { from:'WSSS', to:'LFPG' }, SQ337:  { from:'LFPG', to:'WSSS' },
   SQ326:  { from:'WSSS', to:'EDDF' }, SQ327:  { from:'EDDF', to:'WSSS' },
   SQ221:  { from:'WSSS', to:'YSSY' }, SQ222:  { from:'YSSY', to:'WSSS' },
   SQ231:  { from:'WSSS', to:'YMML' }, SQ232:  { from:'YMML', to:'WSSS' },
   SQ478:  { from:'WSSS', to:'RJAA' }, SQ479:  { from:'RJAA', to:'WSSS' },
+  SQ638:  { from:'WSSS', to:'VHHH' }, SQ639:  { from:'VHHH', to:'WSSS' },
   SQ800:  { from:'WSSS', to:'VIDP' }, SQ801:  { from:'VIDP', to:'WSSS' },
   SQ860:  { from:'WSSS', to:'VABB' }, SQ861:  { from:'VABB', to:'WSSS' },
   SQ352:  { from:'WSSS', to:'OMDB' }, SQ353:  { from:'OMDB', to:'WSSS' },
+  SQ346:  { from:'WSSS', to:'OMDB' }, SQ347:  { from:'OMDB', to:'WSSS' },
+  SQ423:  { from:'WSSS', to:'VTBS' }, SQ424:  { from:'VTBS', to:'WSSS' },
+  SQ972:  { from:'WSSS', to:'WMKK' }, SQ973:  { from:'WMKK', to:'WSSS' },
 
   // Qatar Airways
   QR920:  { from:'OTHH', to:'OPKC' }, QR921:  { from:'OPKC', to:'OTHH' },
@@ -853,13 +865,40 @@ const KNOWN_ROUTES = {
   EY103:  { from:'OMAA', to:'KJFK' }, EY104:  { from:'KJFK', to:'OMAA' },
   EY474:  { from:'OMAA', to:'WSSS' }, EY475:  { from:'WSSS', to:'OMAA' },
 
+  // Malaysia Airlines
+  MH1:    { from:'WMKK', to:'EGLL' }, MH2:    { from:'EGLL', to:'WMKK' },
+  MH4:    { from:'WMKK', to:'EGLL' }, MH3:    { from:'EGLL', to:'WMKK' },
+  MH17:   { from:'WMKK', to:'VIDP' }, MH18:   { from:'VIDP', to:'WMKK' },
+  MH601:  { from:'WMKK', to:'VTBS' }, MH602:  { from:'VTBS', to:'WMKK' },
+
+  // Korean Air
+  KE1:    { from:'RKSI', to:'KLAX' }, KE2:    { from:'KLAX', to:'RKSI' },
+  KE11:   { from:'RKSI', to:'KJFK' }, KE12:   { from:'KJFK', to:'RKSI' },
+  KE907:  { from:'RKSI', to:'EGLL' }, KE908:  { from:'EGLL', to:'RKSI' },
+
+  // Thai Airways
+  TG910:  { from:'VTBS', to:'EGLL' }, TG911:  { from:'EGLL', to:'VTBS' },
+  TG600:  { from:'VTBS', to:'RJAA' }, TG601:  { from:'RJAA', to:'VTBS' },
+  TG409:  { from:'VTBS', to:'WSSS' }, TG410:  { from:'WSSS', to:'VTBS' },
+
+  // Air India
+  AI111:  { from:'VIDP', to:'KJFK' }, AI112:  { from:'KJFK', to:'VIDP' },
+  AI171:  { from:'VIDP', to:'EGLL' }, AI172:  { from:'EGLL', to:'VIDP' },
+  AI101:  { from:'VIDP', to:'KJFK' }, AI102:  { from:'KJFK', to:'VIDP' },
+
+  // IndiGo (domestic India + regional)
+  '6E11':  { from:'VIDP', to:'VABB' }, '6E12':  { from:'VABB', to:'VIDP' },
+
   // Middle East / regional
   RJ181:  { from:'OJAI', to:'OMDB' }, RJ182:  { from:'OMDB', to:'OJAI' },
   ME201:  { from:'OLBA', to:'LFPG' }, ME202:  { from:'LFPG', to:'OLBA' },
   SV117:  { from:'OERK', to:'HECA' }, SV118:  { from:'HECA', to:'OERK' },
+  SV41:   { from:'OEJN', to:'EGLL' }, SV42:   { from:'EGLL', to:'OEJN' },
   MS777:  { from:'HECA', to:'EGLL' }, MS778:  { from:'EGLL', to:'HECA' },
   MS985:  { from:'HECA', to:'OMDB' }, MS986:  { from:'OMDB', to:'HECA' },
   IR721:  { from:'OIIE', to:'LTBA' }, IR722:  { from:'LTBA', to:'OIIE' },
+  FZ001:  { from:'OMDB', to:'OTHH' }, FZ002:  { from:'OTHH', to:'OMDB' },
+  WY101:  { from:'OOMS', to:'EGLL' }, WY102:  { from:'EGLL', to:'OOMS' },
 };
 
 // ── Route cache (localStorage) ────────────────────────────────
