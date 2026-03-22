@@ -1161,17 +1161,22 @@ async function _fetchAdsbApi(url, source, validCallsigns) {
   return { ...ac, _source: source };
 }
 
-// Try a callsign against community ADS-B feeds in parallel;
-// validCallsigns = array of acceptable callsign strings to verify the result.
-// Returns the first that has a live position matching the callsign, or null.
-async function fetchAdsbLive(callsign, validCallsigns) {
-  const cs = callsign.replace(/\s+/g, '').toUpperCase();
+// Try ALL callsign variants against ALL ADS-B feeds in parallel.
+// Returns the first that has a live position matching any valid callsign, or null.
+// IMPORTANT: fires all combinations at once so that a fast "not found" on one
+// variant (e.g. IATA "SQ321") doesn't kill the search before the ICAO variant
+// (e.g. "SIA321") has a chance to respond.
+async function fetchAdsbLive(callsignOrVariants, validCallsigns) {
+  const variants = Array.isArray(callsignOrVariants) ? callsignOrVariants : [callsignOrVariants];
+  const requests = [];
+  for (const v of variants) {
+    const cs = v.replace(/\s+/g, '').toUpperCase();
+    requests.push(_fetchAdsbApi(`https://api.adsb.lol/v2/callsign/${cs}`,      'adsb.lol',      validCallsigns));
+    requests.push(_fetchAdsbApi(`https://api.airplanes.live/v2/callsign/${cs}`, 'airplanes.live', validCallsigns));
+  }
   try {
-    return await Promise.any([
-      _fetchAdsbApi(`https://api.adsb.lol/v2/callsign/${cs}`,      'adsb.lol',      validCallsigns),
-      _fetchAdsbApi(`https://api.airplanes.live/v2/callsign/${cs}`, 'airplanes.live', validCallsigns),
-    ]);
-  } catch(e) { console.warn('[SafeZone] ADS-B feeds failed for', cs, ':', e.message); return null; }
+    return await Promise.any(requests);
+  } catch(e) { console.warn('[SafeZone] ADS-B feeds failed:', e.message); return null; }
 }
 
 // Resolve ICAO airport code → { lat, lng, name, iata } — local table first
@@ -1225,9 +1230,9 @@ async function trackFlightNumber() {
     const variants = normalizeCallsign(raw);
 
     // ── Step 1: Try ADS-B feeds FIRST (fast, ~1-2s) ───────────────
-    const adsbAc = await Promise.any(
-      variants.map(cs => fetchAdsbLive(cs, variants))
-    ).catch(() => null);
+    // Pass all variants at once — fires all combinations in parallel so a fast
+    // "not found" on IATA form doesn't kill the search before ICAO form responds.
+    const adsbAc = await fetchAdsbLive(variants, variants);
     if (signal.aborted) return;
 
     // ── Step 2: Try OpenSky only if ADS-B didn't return route info ──
