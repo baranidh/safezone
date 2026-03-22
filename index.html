@@ -71,15 +71,15 @@
 
     /* ── PANEL TOGGLE BUTTON ────────────────────────────────── */
     #panel-toggle {
-      position: fixed; z-index: 950;
-      top: 62px; left: 50%; transform: translateX(-50%);
-      height: 38px; border-radius: 19px; padding: 0 20px;
-      background: rgba(0,10,26,.82); border: 1px solid var(--accent);
-      color: var(--accent); font-size: .82rem; font-weight: 700;
+      position: fixed; z-index: 940;
+      top: 62px; left: 12px;
+      height: 34px; border-radius: 17px; padding: 0 16px;
+      background: rgba(0,10,26,.82); border: 1px solid rgba(0,212,255,.35);
+      color: var(--accent); font-size: .75rem; font-weight: 700;
       letter-spacing: .04em; white-space: nowrap;
-      cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
       backdrop-filter: blur(12px);
-      transition: background .2s; box-shadow: 0 4px 16px rgba(0,0,0,.45);
+      transition: background .2s; box-shadow: 0 4px 12px rgba(0,0,0,.35);
     }
     #panel-toggle:hover { background: rgba(0,212,255,.18); }
     #panel-toggle.panel-open { background: rgba(0,212,255,.15); }
@@ -89,7 +89,7 @@
       position: fixed; top: 52px; left: 0; bottom: 0;
       width: 300px; z-index: 900; overflow-y: auto;
       background: var(--panel); border-right: 1px solid var(--border);
-      padding: 56px 13px 18px; /* top pad leaves room for toggle */
+      padding: 14px 13px 18px;
       display: flex; flex-direction: column; gap: 13px;
       transition: transform .3s cubic-bezier(.4,0,.2,1);
       scrollbar-width: thin; scrollbar-color: var(--border) transparent;
@@ -103,12 +103,12 @@
     /* ── MOBILE OVERRIDES ── */
     @media (max-width: 768px) {
       #panel-toggle {
-        top: 60px; height: 34px; padding: 0 16px; font-size: .77rem;
+        top: 58px; left: 8px; height: 30px; padding: 0 12px; font-size: .7rem;
       }
       #left-panel {
         /* slide up from bottom */
         top: auto; left: 0; right: 0; bottom: 0;
-        width: 100%; height: 62vh;
+        width: 100%; height: 50vh;
         border-right: none; border-top: 1px solid var(--border);
         border-radius: 18px 18px 0 0;
         padding: 14px 14px 24px;
@@ -270,6 +270,25 @@
     .fn-clear-btn  { border: 1px solid rgba(255,255,255,.2); background: transparent; color: var(--muted); }
     .fn-clear-btn:hover  { background: rgba(255,255,255,.07); color: var(--text); }
 
+    /* ── ALWAYS-VISIBLE FLIGHT SEARCH BAR ───────────────────── */
+    #flight-search-bar {
+      position: fixed; z-index: 950;
+      top: 62px; left: 50%; transform: translateX(-50%);
+      width: 360px; max-width: calc(100vw - 24px);
+      background: rgba(10, 16, 34, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    }
+    @media (max-width: 768px) {
+      #flight-search-bar {
+        top: 58px; width: calc(100vw - 16px);
+        border-radius: 10px; padding: 8px 10px;
+      }
+    }
+
     /* data-notice banner */
     #data-notice {
       position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%);
@@ -296,50 +315,44 @@
 <!-- ── MAP ─────────────────────────────────────────────────── -->
 <div id="map"></div>
 
-<!-- ── PANEL TOGGLE (centered below header) ─────────────────── -->
-<button id="panel-toggle" onclick="togglePanel()" aria-label="Search your flight">
-  <i class="fas fa-magnifying-glass" id="toggle-icon"></i>
-  <span id="toggle-label">Search Your Flight</span>
+<!-- ── ALWAYS-VISIBLE FLIGHT SEARCH BAR ─────────────────────── -->
+<div id="flight-search-bar">
+  <div style="display:flex;flex-direction:column;gap:7px">
+    <div class="fn-input-row">
+      <input id="fn-input" type="text" placeholder="e.g. EK509 · QR7 · SQ317"
+        maxlength="10"
+        onkeydown="if(event.key==='Enter')trackFlightNumber()"
+        oninput="this.value=this.value.toUpperCase()" />
+      <button class="fn-track-btn" id="fn-track-btn" onclick="trackFlightNumber()">
+        <i class="fas fa-satellite-dish"></i> Track
+      </button>
+    </div>
+    <div id="fn-status"></div>
+    <div id="fn-result-card">
+      <div class="fn-callsign" id="fn-cs">—</div>
+      <div class="fn-airline"  id="fn-airline"></div>
+      <div class="fn-route-line" id="fn-route-line"></div>
+      <div class="fn-stats-row" id="fn-stats-row"></div>
+      <div id="fn-tags"></div>
+      <div class="fn-btn-row">
+        <button class="fn-center-btn" onclick="fnCenterOnMap()"><i class="fas fa-crosshairs"></i> Center map</button>
+        <button class="fn-clear-btn"  onclick="clearFlightSearch()"><i class="fas fa-times"></i> Clear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── PANEL TOGGLE (centered below search bar) ────────────── -->
+<button id="panel-toggle" onclick="togglePanel()" aria-label="Filters & stats">
+  <i class="fas fa-filter" id="toggle-icon"></i>
+  <span id="toggle-label">Filters & Stats</span>
 </button>
 
 <!-- ── MOBILE BACKDROP ──────────────────────────────────────── -->
 <div id="panel-backdrop" onclick="closePanel()"></div>
 
-<!-- ── LEFT PANEL ───────────────────────────────────────────── -->
+<!-- ── LEFT PANEL (filters & stats only) ───────────────────── -->
 <div id="left-panel" class="panel-hidden">
-
-  <!-- ── Track by Flight Number (PRIMARY) ── -->
-  <div class="panel-section">
-    <div class="panel-title" onclick="toggleSection(this)">
-      <span><i class="fas fa-magnifying-glass-location"></i> Track Flight Number</span>
-      <i class="fas fa-chevron-down collapse-arrow"></i>
-    </div>
-    <div class="section-body" style="max-height:400px">
-      <div style="display:flex;flex-direction:column;gap:7px;padding-top:5px">
-        <div class="fn-input-row">
-          <input id="fn-input" type="text" placeholder="e.g. EK509 · QR7 · SQ317"
-            maxlength="10"
-            onkeydown="if(event.key==='Enter')trackFlightNumber()"
-            oninput="this.value=this.value.toUpperCase()" />
-          <button class="fn-track-btn" id="fn-track-btn" onclick="trackFlightNumber()">
-            <i class="fas fa-satellite-dish"></i> Track
-          </button>
-        </div>
-        <div id="fn-status"></div>
-        <div id="fn-result-card">
-          <div class="fn-callsign" id="fn-cs">—</div>
-          <div class="fn-airline"  id="fn-airline"></div>
-          <div class="fn-route-line" id="fn-route-line"></div>
-          <div class="fn-stats-row" id="fn-stats-row"></div>
-          <div id="fn-tags"></div>
-          <div class="fn-btn-row">
-            <button class="fn-center-btn" onclick="fnCenterOnMap()"><i class="fas fa-crosshairs"></i> Center map</button>
-            <button class="fn-clear-btn"  onclick="clearFlightSearch()"><i class="fas fa-times"></i> Clear</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- Stats -->
   <div class="panel-section">
@@ -473,6 +486,10 @@ const AIRPORTS = {
   SYD:{ name:"Sydney – Kingsford Smith",country:"Australia",    lat:-33.9399, lng:151.1753, icao:"YSSY" },
   MEL:{ name:"Melbourne – Tullamarine", country:"Australia",    lat:-37.6690, lng:144.8410, icao:"YMML" },
   BNE:{ name:"Brisbane International",  country:"Australia",    lat:-27.3842, lng:153.1175, icao:"YBBN" },
+  LAX:{ name:"Los Angeles International",country:"USA",         lat:33.9425,  lng:-118.4081,icao:"KLAX" },
+  SFO:{ name:"San Francisco International",country:"USA",       lat:37.6213,  lng:-122.3790,icao:"KSFO" },
+  DFW:{ name:"Dallas/Fort Worth",        country:"USA",          lat:32.8998,  lng:-97.0403, icao:"KDFW" },
+  ATL:{ name:"Atlanta – Hartsfield",     country:"USA",          lat:33.6407,  lng:-84.4277, icao:"KATL" },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -714,6 +731,194 @@ async function fetchRealRoute(oIcao, dIcao) {
     console.warn('[SafeZone] Flight Plan Database unavailable:', e.message);
     return null;
   }
+}
+
+// Lookup scheduled route for a flight number via external APIs.
+// ══════════════════════════════════════════════════════════════
+//  KNOWN ROUTES — offline fallback for common flights
+//  When all live APIs and FlightPlanDB fail, we still show the route.
+//  Key = IATA callsign (uppercase, no spaces). Value = { from, to } (ICAO codes).
+// ══════════════════════════════════════════════════════════════
+const KNOWN_ROUTES = {
+  // Emirates
+  EK509:  { from:'OMDB', to:'VABB' }, EK510:  { from:'VABB', to:'OMDB' },
+  EK215:  { from:'OMDB', to:'KJFK' }, EK216:  { from:'KJFK', to:'OMDB' },
+  EK201:  { from:'OMDB', to:'KJFK' }, EK202:  { from:'KJFK', to:'OMDB' },
+  EK231:  { from:'OMDB', to:'EGLL' }, EK232:  { from:'EGLL', to:'OMDB' },
+  EK001:  { from:'OMDB', to:'EGLL' }, EK002:  { from:'EGLL', to:'OMDB' },
+  EK003:  { from:'OMDB', to:'EGLL' }, EK004:  { from:'EGLL', to:'OMDB' },
+  EK005:  { from:'OMDB', to:'EGLL' }, EK006:  { from:'EGLL', to:'OMDB' },
+  EK371:  { from:'OMDB', to:'LFPG' }, EK372:  { from:'LFPG', to:'OMDB' },
+  EK049:  { from:'OMDB', to:'EDDF' }, EK050:  { from:'EDDF', to:'OMDB' },
+  EK405:  { from:'OMDB', to:'YSSY' }, EK406:  { from:'YSSY', to:'OMDB' },
+  EK412:  { from:'OMDB', to:'YSSY' }, EK413:  { from:'YSSY', to:'OMDB' },
+  EK418:  { from:'OMDB', to:'YMML' }, EK419:  { from:'YMML', to:'OMDB' },
+  EK434:  { from:'OMDB', to:'YBBN' }, EK435:  { from:'YBBN', to:'OMDB' },
+  EK354:  { from:'OMDB', to:'WSSS' }, EK355:  { from:'WSSS', to:'OMDB' },
+  EK318:  { from:'OMDB', to:'RJAA' }, EK319:  { from:'RJAA', to:'OMDB' },
+  EK316:  { from:'OMDB', to:'RJBB' }, EK317:  { from:'RJBB', to:'OMDB' },
+  EK384:  { from:'OMDB', to:'VHHH' }, EK385:  { from:'VHHH', to:'OMDB' },
+  EK524:  { from:'OMDB', to:'VIDP' }, EK525:  { from:'VIDP', to:'OMDB' },
+
+  // Singapore Airlines
+  SQ308:  { from:'WSSS', to:'EGLL' }, SQ317:  { from:'EGLL', to:'WSSS' },
+  SQ305:  { from:'WSSS', to:'EGLL' }, SQ306:  { from:'EGLL', to:'WSSS' },
+  SQ22:   { from:'WSSS', to:'KJFK' }, SQ21:   { from:'KJFK', to:'WSSS' },
+  SQ25:   { from:'WSSS', to:'KJFK' }, SQ24:   { from:'KJFK', to:'WSSS' },
+  SQ318:  { from:'WSSS', to:'LFPG' }, SQ319:  { from:'LFPG', to:'WSSS' },
+  SQ326:  { from:'WSSS', to:'EDDF' }, SQ327:  { from:'EDDF', to:'WSSS' },
+  SQ221:  { from:'WSSS', to:'YSSY' }, SQ222:  { from:'YSSY', to:'WSSS' },
+  SQ231:  { from:'WSSS', to:'YMML' }, SQ232:  { from:'YMML', to:'WSSS' },
+  SQ478:  { from:'WSSS', to:'RJAA' }, SQ479:  { from:'RJAA', to:'WSSS' },
+  SQ800:  { from:'WSSS', to:'VIDP' }, SQ801:  { from:'VIDP', to:'WSSS' },
+  SQ860:  { from:'WSSS', to:'VABB' }, SQ861:  { from:'VABB', to:'WSSS' },
+  SQ352:  { from:'WSSS', to:'OMDB' }, SQ353:  { from:'OMDB', to:'WSSS' },
+
+  // Qatar Airways
+  QR920:  { from:'OTHH', to:'OPKC' }, QR921:  { from:'OPKC', to:'OTHH' },
+  QR001:  { from:'OTHH', to:'EGLL' }, QR002:  { from:'EGLL', to:'OTHH' },
+  QR003:  { from:'OTHH', to:'EGLL' }, QR004:  { from:'EGLL', to:'OTHH' },
+  QR701:  { from:'OTHH', to:'KJFK' }, QR702:  { from:'KJFK', to:'OTHH' },
+  QR039:  { from:'OTHH', to:'LFPG' }, QR040:  { from:'LFPG', to:'OTHH' },
+  QR067:  { from:'OTHH', to:'EDDF' }, QR068:  { from:'EDDF', to:'OTHH' },
+  QR844:  { from:'OTHH', to:'WSSS' }, QR845:  { from:'WSSS', to:'OTHH' },
+  QR908:  { from:'OTHH', to:'VIDP' }, QR909:  { from:'VIDP', to:'OTHH' },
+
+  // British Airways
+  BA117:  { from:'EGLL', to:'KJFK' }, BA178:  { from:'KJFK', to:'EGLL' },
+  BA115:  { from:'EGLL', to:'KJFK' }, BA116:  { from:'KJFK', to:'EGLL' },
+  BA001:  { from:'EGLL', to:'KJFK' }, BA002:  { from:'KJFK', to:'EGLL' },
+  BA015:  { from:'EGLL', to:'WSSS' }, BA016:  { from:'WSSS', to:'EGLL' },
+  BA009:  { from:'EGLL', to:'VTBS' }, BA010:  { from:'VTBS', to:'EGLL' },
+  BA011:  { from:'EGLL', to:'WSSS' }, BA012:  { from:'WSSS', to:'EGLL' },
+  BA303:  { from:'EGLL', to:'OMDB' }, BA304:  { from:'OMDB', to:'EGLL' },
+  BA305:  { from:'EGLL', to:'OMDB' }, BA306:  { from:'OMDB', to:'EGLL' },
+
+  // Lufthansa
+  LH400:  { from:'EDDF', to:'KJFK' }, LH401:  { from:'KJFK', to:'EDDF' },
+  LH402:  { from:'EDDF', to:'KJFK' }, LH403:  { from:'KJFK', to:'EDDF' },
+  LH778:  { from:'EDDF', to:'VHHH' }, LH779:  { from:'VHHH', to:'EDDF' },
+  LH710:  { from:'EDDF', to:'RJAA' }, LH711:  { from:'RJAA', to:'EDDF' },
+  LH630:  { from:'EDDF', to:'OMDB' }, LH631:  { from:'OMDB', to:'EDDF' },
+  LH600:  { from:'EDDF', to:'HECA' }, LH601:  { from:'HECA', to:'EDDF' },
+
+  // American Airlines
+  AA100:  { from:'KJFK', to:'EGLL' }, AA101:  { from:'EGLL', to:'KJFK' },
+  AA106:  { from:'KJFK', to:'EGLL' }, AA107:  { from:'EGLL', to:'KJFK' },
+  AA50:   { from:'KDFW', to:'VHHH' }, AA51:   { from:'VHHH', to:'KDFW' },
+
+  // United Airlines
+  UA900:  { from:'KSFO', to:'RJAA' }, UA901:  { from:'RJAA', to:'KSFO' },
+  UA1:    { from:'KSFO', to:'WSSS' }, UA2:    { from:'WSSS', to:'KSFO' },
+  UA837:  { from:'KSFO', to:'VHHH' }, UA862:  { from:'VHHH', to:'KSFO' },
+
+  // Delta
+  DL1:    { from:'KJFK', to:'KLAX' }, DL2:    { from:'KLAX', to:'KJFK' },
+  DL7:    { from:'KJFK', to:'EGLL' }, DL8:    { from:'EGLL', to:'KJFK' },
+  DL468:  { from:'KATL', to:'LFPG' }, DL469:  { from:'LFPG', to:'KATL' },
+
+  // Air France
+  AF1:    { from:'LFPG', to:'EGLL' }, AF2:    { from:'EGLL', to:'LFPG' },
+  AF6:    { from:'LFPG', to:'KJFK' }, AF7:    { from:'KJFK', to:'LFPG' },
+  AF662:  { from:'LFPG', to:'OMDB' }, AF663:  { from:'OMDB', to:'LFPG' },
+
+  // Turkish Airlines
+  TK1:    { from:'LTBA', to:'LGAV' }, TK2:    { from:'LGAV', to:'LTBA' },
+  TK77:   { from:'LTBA', to:'KJFK' }, TK78:   { from:'KJFK', to:'LTBA' },
+  TK1951: { from:'LTBA', to:'EGLL' }, TK1952: { from:'EGLL', to:'LTBA' },
+  TK764:  { from:'LTBA', to:'OMDB' }, TK765:  { from:'OMDB', to:'LTBA' },
+
+  // Qantas
+  QF1:    { from:'YSSY', to:'WSSS' }, QF2:    { from:'WSSS', to:'YSSY' },
+  QF7:    { from:'YSSY', to:'KDFW' }, QF8:    { from:'KDFW', to:'YSSY' },
+  QF9:    { from:'YMML', to:'EGLL' }, QF10:   { from:'EGLL', to:'YMML' },
+  QF11:   { from:'YSSY', to:'EGLL' }, QF12:   { from:'EGLL', to:'YSSY' },
+
+  // Cathay Pacific
+  CX888:  { from:'VHHH', to:'KLAX' }, CX881:  { from:'KLAX', to:'VHHH' },
+  CX250:  { from:'VHHH', to:'EGLL' }, CX251:  { from:'EGLL', to:'VHHH' },
+  CX880:  { from:'VHHH', to:'KJFK' }, CX845:  { from:'KJFK', to:'VHHH' },
+  CX714:  { from:'VHHH', to:'WSSS' }, CX715:  { from:'WSSS', to:'VHHH' },
+  CX710:  { from:'VHHH', to:'WSSS' }, CX711:  { from:'WSSS', to:'VHHH' },
+
+  // Etihad
+  EY001:  { from:'OMAA', to:'EGLL' }, EY002:  { from:'EGLL', to:'OMAA' },
+  EY103:  { from:'OMAA', to:'KJFK' }, EY104:  { from:'KJFK', to:'OMAA' },
+  EY474:  { from:'OMAA', to:'WSSS' }, EY475:  { from:'WSSS', to:'OMAA' },
+
+  // Middle East / regional
+  RJ181:  { from:'OJAI', to:'OMDB' }, RJ182:  { from:'OMDB', to:'OJAI' },
+  ME201:  { from:'OLBA', to:'LFPG' }, ME202:  { from:'LFPG', to:'OLBA' },
+  SV117:  { from:'OERK', to:'HECA' }, SV118:  { from:'HECA', to:'OERK' },
+  MS777:  { from:'HECA', to:'EGLL' }, MS778:  { from:'EGLL', to:'HECA' },
+  MS985:  { from:'HECA', to:'OMDB' }, MS986:  { from:'OMDB', to:'HECA' },
+  IR721:  { from:'OIIE', to:'LTBA' }, IR722:  { from:'LTBA', to:'OIIE' },
+};
+
+// ── Route cache (localStorage) ────────────────────────────────
+// Every successful flight lookup caches { from, to, ts } keyed by IATA callsign.
+// On future lookups, cached data is preferred over hardcoded KNOWN_ROUTES.
+const _ROUTE_CACHE_KEY = 'safezone_route_cache';
+
+function _loadRouteCache() {
+  try { return JSON.parse(localStorage.getItem(_ROUTE_CACHE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function cacheRoute(rawCallsign, fromIcao, toIcao) {
+  if (!fromIcao || !toIcao) return;
+  const variants = normalizeCallsign(rawCallsign);
+  const key = variants[0]; // cache under IATA form (e.g. "SQ308")
+  if (!key) return;
+  try {
+    const cache = _loadRouteCache();
+    cache[key] = { from: fromIcao, to: toIcao, ts: Date.now() };
+    localStorage.setItem(_ROUTE_CACHE_KEY, JSON.stringify(cache));
+    console.log('[SafeZone] Cached route:', key, fromIcao, '→', toIcao);
+  } catch(e) { console.debug('[SafeZone] Route cache write failed:', e.message); }
+}
+
+// Look up known route: localStorage cache first, then hardcoded KNOWN_ROUTES.
+function lookupKnownRoute(rawCallsign) {
+  const variants = normalizeCallsign(rawCallsign);
+  // 1. Check localStorage cache
+  const cache = _loadRouteCache();
+  for (const cs of variants) {
+    const cached = cache[cs];
+    if (cached && cached.from && cached.to) {
+      console.log('[SafeZone] Route from cache:', cs, cached.from, '→', cached.to);
+      return { oIcao: cached.from, dIcao: cached.to };
+    }
+  }
+  // 2. Fall back to hardcoded
+  for (const cs of variants) {
+    const r = KNOWN_ROUTES[cs];
+    if (r) return { oIcao: r.from, dIcao: r.to };
+  }
+  return null;
+}
+
+// Returns { oIcao, dIcao } or null.
+async function fetchScheduledRoute(rawCallsign) {
+  const variants = normalizeCallsign(rawCallsign);
+  // Try FlightPlanDatabase search with each callsign variant
+  for (const cs of variants) {
+    try {
+      const res = await fetch(
+        `https://api.flightplandatabase.com/search/plans?q=${encodeURIComponent(cs)}&limit=1`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) continue;
+      const plans = await res.json();
+      if (!Array.isArray(plans) || !plans.length) continue;
+      const plan = plans[0];
+      if (plan.fromICAO && plan.toICAO) {
+        console.log('[SafeZone] Scheduled route found via FlightPlanDB:', plan.fromICAO, '→', plan.toICAO);
+        return { oIcao: plan.fromICAO, dIcao: plan.toICAO, route: plan.route };
+      }
+    } catch(e) { console.debug('[SafeZone] FlightPlanDB search failed for', cs, e.message); }
+  }
+  return null;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -971,37 +1176,71 @@ async function trackFlightNumber() {
     ]);
     if (signal.aborted) return;
 
-    if (!record && !adsbAc) {
-      document.getElementById('fn-status').textContent =
-        `✖ "${raw.toUpperCase()}" not found in OpenSky or ADS-B networks. `
-        + `Flight may not be currently tracked (oceanic gap, or not yet departed).`;
-      showToast('Flight not found in any live source', 'error');
-      return;
-    }
-
-    // ── Merge best data from both sources ────────────────────────
-    // Final safety check: verify the callsign we got is actually one we expected
+    // ── Validate callsigns from both sources ────────────────────
     const recordCs = record ? (record.callsign || '').trim().toUpperCase() : '';
     const adsbCs   = adsbAc ? (adsbAc.flight || '').trim().toUpperCase() : '';
     const recordOk = record && variants.includes(recordCs);
     const adsbOk   = adsbAc && variants.includes(adsbCs);
 
-    if (!recordOk && !adsbOk) {
-      console.warn('[SafeZone] Callsign mismatch — record:', recordCs, 'adsb:', adsbCs, 'expected:', variants);
-      document.getElementById('fn-status').textContent =
-        `✖ "${raw.toUpperCase()}" not found. APIs returned unrelated flights — filtered out.`;
-      showToast('Flight not found (mismatched results filtered)', 'error');
-      return;
-    }
-
-    // Use only the validated source(s)
+    // Use only validated sources
     const validRecord = recordOk ? record : null;
     const validAdsb   = adsbOk   ? adsbAc : null;
 
-    const icao24  = validRecord?.icao24  || validAdsb?.hex   || null;
-    const oIcao   = validRecord?.estDepartureAirport || validAdsb?.from_icao || validAdsb?.orig_icao || null;
-    const dIcao   = validRecord?.estArrivalAirport   || validAdsb?.to_icao   || validAdsb?.dest_icao || null;
-    const csFound = (validRecord?.callsign || validAdsb?.flight || raw).trim().toUpperCase();
+    let icao24  = validRecord?.icao24  || validAdsb?.hex   || null;
+    let oIcao   = validRecord?.estDepartureAirport || validAdsb?.from_icao || validAdsb?.orig_icao || null;
+    let dIcao   = validRecord?.estArrivalAirport   || validAdsb?.to_icao   || validAdsb?.dest_icao || null;
+    let csFound = (validRecord?.callsign || validAdsb?.flight || raw).trim().toUpperCase();
+    let routeOnly = false;   // true when we only have a scheduled route, no live data
+
+    // If no validated live data, try to fetch the scheduled route as fallback
+    if (!validRecord && !validAdsb) {
+      console.warn('[SafeZone] No validated live data — trying scheduled route fallback');
+      document.getElementById('fn-status').textContent = 'No live data — looking up scheduled route…';
+
+      const scheduled = await fetchScheduledRoute(raw);
+      if (signal.aborted) return;
+
+      if (!scheduled) {
+        // Last resort: check our local known-routes database
+        const known = lookupKnownRoute(raw);
+        if (!known) {
+          document.getElementById('fn-status').textContent =
+            `✖ "${raw.toUpperCase()}" not found in any live or scheduled source.`;
+          showToast('Flight not found in any source', 'error');
+          return;
+        }
+        console.log('[SafeZone] Using known route from local database');
+        oIcao = known.oIcao;
+        dIcao = known.dIcao;
+        csFound = variants[0] || raw.toUpperCase();
+        routeOnly = true;
+      } else {
+      oIcao = scheduled.oIcao;
+      dIcao = scheduled.dIcao;
+      csFound = variants[0] || raw.toUpperCase();
+      routeOnly = true;
+      }
+    }
+    // If we have a record but no origin/dest, also try scheduled route + known routes
+    if (!oIcao || !dIcao) {
+      const scheduled = await fetchScheduledRoute(raw);
+      if (signal.aborted) return;
+      if (scheduled) {
+        oIcao = oIcao || scheduled.oIcao;
+        dIcao = dIcao || scheduled.dIcao;
+      }
+      // Still missing? Try local known-routes as last resort
+      if (!oIcao || !dIcao) {
+        const known = lookupKnownRoute(raw);
+        if (known) {
+          oIcao = oIcao || known.oIcao;
+          dIcao = dIcao || known.dIcao;
+        }
+      }
+    }
+
+    // Cache the resolved route for future offline use
+    if (oIcao && dIcao) cacheRoute(raw, oIcao, dIcao);
 
     const lastSeenDate = validRecord?.lastSeen
       ? new Date(validRecord.lastSeen * 1000).toUTCString().slice(0, 22) + ' UTC'
@@ -1112,6 +1351,7 @@ async function trackFlightNumber() {
     document.getElementById('fn-airline').textContent =
       airline + (isAirborne
         ? `  ·  via ${dataSource}`
+        : routeOnly ? '  ·  scheduled route'
         : (lastSeenDate ? `  ·  last seen ${lastSeenDate}` : '  ·  not currently airborne'));
 
     const oLabel = oCoord ? `<span class="fn-ap">${esc(oCoord.iata)}</span>` : (oIcao ? `<span class="fn-ap">${esc(oIcao)}</span>` : '');
@@ -1126,13 +1366,16 @@ async function trackFlightNumber() {
         `<div>Speed <span>${velKmhDisp}</span></div>` +
         `<div>Hdg <span>${Math.round(track)}°</span></div>`;
     } else {
-      document.getElementById('fn-stats-row').innerHTML =
-        `<div style="color:var(--orange)">⬛ On ground / between flights</div>`;
+      document.getElementById('fn-stats-row').innerHTML = routeOnly
+        ? `<div style="color:var(--muted)">Scheduled route · no live position available</div>`
+        : `<div style="color:var(--orange)">⬛ On ground / between flights</div>`;
     }
 
     const statusTag = isAirborne
       ? `<span class="fn-tag fn-tag-ok">● Airborne · ${esc(dataSource)}</span>`
-      : `<span class="fn-tag fn-tag-warn">⬛ On ground${lastSeenDate ? ' · ' + esc(lastSeenDate) : ''}</span>`;
+      : routeOnly
+        ? `<span class="fn-tag fn-tag-warn">◌ No live data · route only</span>`
+        : `<span class="fn-tag fn-tag-warn">⬛ On ground${lastSeenDate ? ' · ' + esc(lastSeenDate) : ''}</span>`;
     const routeTag = pts
       ? ` <span class="fn-tag ${routeIsReal ? 'fn-tag-ok' : 'fn-tag-warn'}" style="margin-left:4px">${routeIsReal ? '✔ IFR route' : '~ Great circle'}</span>`
       : '';
@@ -1143,7 +1386,9 @@ async function trackFlightNumber() {
 
     document.getElementById('fn-result-card').style.display = 'block';
     document.getElementById('fn-status').textContent = !isAirborne && pts
-      ? `Route shown from last recorded operation${lastSeenDate ? ' (' + lastSeenDate + ')' : ''}.`
+      ? (routeOnly
+          ? `Scheduled route shown — flight is not currently tracked on any live feed.`
+          : `Route shown from last recorded operation${lastSeenDate ? ' (' + lastSeenDate + ')' : ''}.`)
       : '';
 
     _activeFlightSearch = { callsign: raw, icao24, lat, lng };
@@ -1151,7 +1396,9 @@ async function trackFlightNumber() {
     showToast(
       isAirborne
         ? `Tracking ${csFound}${airline ? ' · ' + airline : ''}`
-        : `${csFound}${airline ? ' · ' + airline : ''} — on ground · route shown from last operation`,
+        : routeOnly
+          ? `${csFound}${airline ? ' · ' + airline : ''} — showing scheduled route`
+          : `${csFound}${airline ? ' · ' + airline : ''} — on ground · route shown from last operation`,
       isAirborne ? 'success' : 'info'
     );
 
@@ -1217,8 +1464,8 @@ function setPanelState(open) {
 
   panel.classList.toggle('panel-hidden', !open);
   toggle.classList.toggle('panel-open', open);
-  icon.className  = open ? 'fas fa-times' : 'fas fa-magnifying-glass';
-  label.textContent = open ? 'Close' : 'Search Your Flight';
+  icon.className  = open ? 'fas fa-times' : 'fas fa-filter';
+  label.textContent = open ? 'Close' : 'Filters & Stats';
 
   // backdrop only on mobile
   if(isMobile()) backdrop.classList.toggle('visible', open);
