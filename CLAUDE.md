@@ -61,6 +61,15 @@ SafeZone is a single-page web application that monitors Middle East conflict eve
 - Do not modify existing features when adding new ones unless explicitly asked.
 - Test file is `test-flights.mjs` — run with `node test-flights.mjs`.
 
+### Route Drawing Priority
+The route drawn on the map must follow this strict priority — **never skip to great circle if a higher-priority source is available**:
+1. **Real IFR route** (FlightPlanDB) — actual airway waypoints. Always try this first.
+2. **OpenSky track** (`fetchOpenSkyTrack`) — actual flown waypoints from OpenSky `/tracks/all` endpoint. Requires icao24 hex. Shows real flight path.
+3. **Known Routes cache** (`KNOWN_ROUTES`) — 170+ pre-loaded airline routes. Use if both real routes and OpenSky track fail.
+4. **Great circle** — mathematical approximation. **Only use as an absolute last resort** when all above sources fail.
+
+Great circle routes are inaccurate and do not reflect actual flight paths. They must never be used when a higher-priority source is available.
+
 ### Cloudflare Worker Proxy Setup
 1. Go to Cloudflare Dashboard → Workers & Pages → Create Worker.
 2. Paste the contents of `cloudflare-worker-proxy.js` into the editor.

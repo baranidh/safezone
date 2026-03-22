@@ -567,7 +567,7 @@
 // ══════════════════════════════════════════════════════════════
 //  VERSION — increment on every pull request
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v1.1.4';
+const APP_VERSION = 'v1.1.6';
 
 // ══════════════════════════════════════════════════════════════
 //  AIRPORTS
@@ -1247,6 +1247,26 @@ async function fetchFlightRecord(rawCallsign) {
   return null;
 }
 
+// Fetch actual flown waypoints from OpenSky tracks endpoint.
+// Returns array of [lat, lon] pairs, or null on failure.
+async function fetchOpenSkyTrack(icao24) {
+  if (!icao24) return null;
+  try {
+    const res = await fetch(
+      `https://opensky-network.org/api/tracks/all?icao24=${icao24.toLowerCase()}&time=0`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.path || !Array.isArray(data.path) || data.path.length < 2) return null;
+    // path entries: [time, lat, lon, baro_altitude, true_track, on_ground]
+    return data.path.map(p => [p[1], p[2]]);
+  } catch(e) {
+    console.warn('[SafeZone] OpenSky track fetch failed:', e.message);
+    return null;
+  }
+}
+
 // Fetch live ADS-B state for a known icao24
 async function fetchLiveState(icao24) {
   try {
@@ -1654,12 +1674,45 @@ async function trackFlightNumber() {
       resolveIcaoToCoord(dIcao),
     ]);
 
-    let pts = null, routeIsReal = false, distKm = null, zones = [];
+    let pts = null, routeIsReal = false, routeFromKnown = false, routeFromTrack = false, distKm = null, zones = [];
     if (oCoord && dCoord) {
+      // Priority 1: Real IFR route from FlightPlanDB
       pts = await fetchRealRoute(oIcao, dIcao);
       routeIsReal = !!(pts && pts.length >= 2);
-      if (!pts || pts.length < 2) {
-        pts = greatCircle(oCoord.lat, oCoord.lng, dCoord.lat, dCoord.lng);
+
+      // Priority 2: OpenSky track — actual flown waypoints (needs icao24)
+      if (!routeIsReal && icao24) {
+        const trackPts = await fetchOpenSkyTrack(icao24);
+        if (trackPts && trackPts.length >= 2) {
+          pts = trackPts;
+          routeFromTrack = true;
+        }
+      }
+
+      // Priority 3: Known routes — try fetching real IFR waypoints for known route airports
+      if (!routeIsReal && !routeFromTrack) {
+        const known = lookupKnownRoute(raw);
+        if (known) {
+          // If known route has different airports, try FlightPlanDB with those
+          if (known.oIcao !== oIcao || known.dIcao !== dIcao) {
+            pts = await fetchRealRoute(known.oIcao, known.dIcao);
+            routeIsReal = !!(pts && pts.length >= 2);
+          }
+          if (!routeIsReal) {
+            // Use known route airports for great-circle line, but label as known route
+            routeFromKnown = true;
+            const knownO = await resolveIcaoToCoord(known.oIcao);
+            const knownD = await resolveIcaoToCoord(known.dIcao);
+            if (knownO && knownD) {
+              pts = greatCircle(knownO.lat, knownO.lng, knownD.lat, knownD.lng);
+            } else {
+              pts = greatCircle(oCoord.lat, oCoord.lng, dCoord.lat, dCoord.lng);
+            }
+          }
+        } else {
+          // Priority 4: Great circle — absolute last resort
+          pts = greatCircle(oCoord.lat, oCoord.lng, dCoord.lat, dCoord.lng);
+        }
       }
       zones = pathCrossesZones(pts);
       const highRisk = zones.some(z => z.level === 'high');
@@ -1668,7 +1721,8 @@ async function trackFlightNumber() {
 
       // Draw path (dimmer opacity when on ground = historical view)
       const opacity = isAirborne ? 0.82 : 0.48;
-      const line = L.polyline(pts, { color: pathColor, weight: 3, opacity, dashArray: isAirborne && routeIsReal ? null : '9 5' });
+      const hasRealPath = routeIsReal || routeFromTrack;
+      const line = L.polyline(pts, { color: pathColor, weight: 3, opacity, dashArray: isAirborne && hasRealPath ? null : '9 5' });
       flightSearchGroup.addLayer(line);
 
       const apIcon = (label, color) => L.divIcon({
@@ -1699,7 +1753,7 @@ async function trackFlightNumber() {
           <div>Speed: <span style="color:var(--text)">${esc(velKmh)}</span></div>
           <div>Heading: <span style="color:var(--text)">${Math.round(track)}°</span></div>
           <div style="color:var(--muted);margin-top:3px">ICAO24: ${esc(icao24 || '')} · via ${esc(dataSource)}</div>
-          ${routeIsReal ? `<div style="color:#4caf50;margin-top:3px">✔ Real IFR airways route</div>` : ''}
+          ${routeIsReal ? `<div style="color:#4caf50;margin-top:3px">✔ Real IFR airways route</div>` : routeFromTrack ? `<div style="color:#4caf50;margin-top:3px">✔ OpenSky live track</div>` : ''}
         </div>`);
       flightSearchGroup.addLayer(_fnMarker);
     }
@@ -1746,7 +1800,7 @@ async function trackFlightNumber() {
         ? `<span class="fn-tag fn-tag-warn">◌ No live data · via ${esc(dataSource)}</span>`
         : `<span class="fn-tag fn-tag-warn">⬛ On ground · via ${esc(dataSource)}${lastSeenDate ? ' · ' + esc(lastSeenDate) : ''}</span>`;
     const routeTag = pts
-      ? ` <span class="fn-tag ${routeIsReal ? 'fn-tag-ok' : 'fn-tag-warn'}" style="margin-left:4px">${routeIsReal ? '✔ IFR route' : '~ Great circle'}</span>`
+      ? ` <span class="fn-tag ${routeIsReal || routeFromTrack ? 'fn-tag-ok' : routeFromKnown ? 'fn-tag-ok' : 'fn-tag-warn'}" style="margin-left:4px">${routeIsReal ? '✔ IFR route' : routeFromTrack ? '✔ OpenSky track' : routeFromKnown ? '✔ via known routes' : '~ Great circle'}</span>`
       : '';
     const riskTag = zones.length
       ? `<span class="fn-tag fn-tag-warn" style="margin-left:4px">⚠ ${zones.length} conflict zone${zones.length>1?'s':''}</span>`
