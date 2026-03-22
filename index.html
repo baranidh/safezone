@@ -1345,7 +1345,6 @@ async function fetchAirlabs(rawCallsign, validCallsigns) {
       const data = await res.json();
       if (data.error) {
         console.warn('[SafeZone] AirLabs error:', data.error.message);
-        showToast(`AirLabs: ${data.error.message}`, 'error');
         continue;
       }
       const flights = data.response;
@@ -1376,13 +1375,8 @@ async function fetchAirlabs(rawCallsign, validCallsigns) {
         to_icao:   f.arr_icao || null,
         _source:   src,
       };
-    } catch(e) {
-      console.warn('[SafeZone] AirLabs failed for', cs, e.message);
-      showToast(`AirLabs: ${e.message}`, 'error');
-    }
+    } catch(e) { console.warn('[SafeZone] AirLabs failed for', cs, e.message); }
   }
-  // Show feedback when AirLabs was reached but had no live data
-  showToast('AirLabs: flight not airborne or not tracked', 'info');
   return null;
 }
 
@@ -1522,6 +1516,11 @@ async function trackFlightNumber() {
     let csFound = (validRecord?.callsign || validAdsb?.flight || raw).trim().toUpperCase();
     let routeOnly = false;   // true when we only have a scheduled route, no live data
     let routeSource = '';    // which source provided the route (for attribution)
+    let sourceLog = [];      // tracks every source tried + result for user visibility
+
+    // Log free source results
+    sourceLog.push(`ADS-B: ${validAdsb ? '✓' : '✗'}`);
+    sourceLog.push(`OpenSky: ${validRecord ? '✓' : needsRoute ? '✗' : 'skipped'}`);
 
     // If no validated live data, try AirLabs (paid) for live position,
     // then fall back to route-only sources (scheduled route, known routes).
@@ -1541,8 +1540,15 @@ async function trackFlightNumber() {
             dIcao  = adsbAc.to_icao   || adsbAc.dest_icao || null;
             csFound = airlabsCs;
             validAdsb = adsbAc;
+            sourceLog.push('AirLabs: ✓ live');
+          } else {
+            sourceLog.push('AirLabs: ✗ callsign mismatch');
           }
+        } else {
+          sourceLog.push('AirLabs: ✗ no data');
         }
+      } else {
+        sourceLog.push('AirLabs: not configured');
       }
 
       // If AirLabs also missed, fall back to route-only sources
@@ -1557,10 +1563,13 @@ async function trackFlightNumber() {
           csFound = variants[0] || raw.toUpperCase();
           routeOnly = true;
           routeSource = 'FlightPlanDB';
+          sourceLog.push('FlightPlanDB: ✓ route');
         } else {
+          sourceLog.push('FlightPlanDB: ✗');
           // Last resort: local known-routes database
           const known = lookupKnownRoute(raw);
           if (!known) {
+            sourceLog.push('Known routes: ✗');
             document.getElementById('fn-status').textContent =
               `✖ "${raw.toUpperCase()}" not found in any live or scheduled source.`;
             showToast('Flight not found in any source', 'error');
@@ -1572,6 +1581,7 @@ async function trackFlightNumber() {
           csFound = variants[0] || raw.toUpperCase();
           routeOnly = true;
           routeSource = 'known routes';
+          sourceLog.push('Known routes: ✓ route');
         }
       }
     }
@@ -1743,11 +1753,12 @@ async function trackFlightNumber() {
     document.getElementById('fn-tags').innerHTML = statusTag + routeTag + riskTag;
 
     document.getElementById('fn-result-card').style.display = 'block';
+    const sourceInfo = sourceLog.length ? `  [${sourceLog.join(' → ')}]` : '';
     document.getElementById('fn-status').textContent = !isAirborne && pts
       ? (routeOnly
-          ? `Scheduled route shown via ${dataSource} — flight is not currently tracked on any live feed.`
-          : `Route shown from last recorded operation via ${dataSource}${lastSeenDate ? ' (' + lastSeenDate + ')' : ''}.`)
-      : '';
+          ? `Scheduled route shown via ${dataSource} — flight is not currently tracked on any live feed.${sourceInfo}`
+          : `Route shown from last recorded operation via ${dataSource}${lastSeenDate ? ' (' + lastSeenDate + ')' : ''}.${sourceInfo}`)
+      : (isAirborne && sourceLog.length ? `Live via ${dataSource}${sourceInfo}` : '');
 
     _activeFlightSearch = { callsign: raw, icao24, lat, lng };
     document.getElementById('stat-flights').textContent = isAirborne ? 1 : 0;
