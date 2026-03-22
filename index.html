@@ -808,8 +808,9 @@ function callsignToAirline(cs) {
   return '';
 }
 
-// Try one 2-hour window for a given callsign
-async function _tryWindow(callsign, begin, end) {
+// Try one 2-hour window for a given callsign.
+// validCallsigns = array of acceptable callsign strings (trimmed, uppercase).
+async function _tryWindow(callsign, begin, end, validCallsigns) {
   const res = await fetch(
     // OpenSky stores Mode S callsigns padded to 8 chars — must match exactly
     `https://opensky-network.org/api/flights/all?callsign=${encodeURIComponent(callsign.padEnd(8))}&begin=${begin}&end=${end}`,
@@ -818,7 +819,16 @@ async function _tryWindow(callsign, begin, end) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if (!Array.isArray(data) || data.length === 0) throw new Error('empty');
-  return data[data.length - 1]; // most recent entry in this window
+  // Find the most recent entry whose callsign matches one of our expected variants
+  if (validCallsigns && validCallsigns.length) {
+    const match = data.slice().reverse().find(f => {
+      const cs = (f.callsign || '').trim().toUpperCase();
+      return validCallsigns.includes(cs);
+    });
+    if (!match) throw new Error('callsign mismatch');
+    return match;
+  }
+  return data[data.length - 1];
 }
 
 // Find the flight record (icao24 + origin/dest) across multiple callsign variants and time windows.
@@ -834,7 +844,7 @@ async function fetchFlightRecord(rawCallsign) {
   for (let offset = 0; offset < 18 * 3600; offset += W) {
     try {
       return await Promise.any(
-        variants.map(cs => _tryWindow(cs, now - offset - W, now - offset))
+        variants.map(cs => _tryWindow(cs, now - offset - W, now - offset, variants))
       );
     } catch(e) { console.debug('[SafeZone] No hit in window offset', offset, e.message || e); }
   }
@@ -845,7 +855,7 @@ async function fetchFlightRecord(rawCallsign) {
     const end = now - day * 86400;
     try {
       return await Promise.any(
-        variants.map(cs => _tryWindow(cs, end - W, end))
+        variants.map(cs => _tryWindow(cs, end - W, end, variants))
       );
     } catch(e) { console.debug('[SafeZone] No hit on day', day, e.message || e); }
   }
@@ -867,25 +877,39 @@ async function fetchLiveState(icao24) {
 }
 
 // Generic helper: fetch from any ADS-B Exchange-compatible API (adsb.lol, airplanes.live…)
-async function _fetchAdsbApi(url, source) {
+// validCallsigns = optional array of acceptable callsign strings (trimmed, uppercase).
+async function _fetchAdsbApi(url, source, validCallsigns) {
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  const ac = data.ac?.[0];
+  const acList = data.ac;
+  if (!Array.isArray(acList) || acList.length === 0) throw new Error('no aircraft');
+  // If we have valid callsigns to check against, find the matching aircraft
+  if (validCallsigns && validCallsigns.length) {
+    const match = acList.find(a => {
+      if (a.lat == null || a.lon == null) return false;
+      const cs = (a.flight || '').trim().toUpperCase();
+      return validCallsigns.includes(cs);
+    });
+    if (!match) throw new Error('callsign mismatch: got ' + (acList[0]?.flight || 'none').trim());
+    return { ...match, _source: source };
+  }
+  const ac = acList[0];
   if (!ac || ac.lat == null || ac.lon == null) throw new Error('no position');
   return { ...ac, _source: source };
 }
 
-// Try a callsign against all three community ADS-B feeds in parallel;
-// returns the first that has a live position, or null.
-async function fetchAdsbLive(callsign) {
+// Try a callsign against community ADS-B feeds in parallel;
+// validCallsigns = array of acceptable callsign strings to verify the result.
+// Returns the first that has a live position matching the callsign, or null.
+async function fetchAdsbLive(callsign, validCallsigns) {
   const cs = callsign.replace(/\s+/g, '').toUpperCase();
   try {
     return await Promise.any([
-      _fetchAdsbApi(`https://api.adsb.lol/v2/callsign/${cs}`,      'adsb.lol'),
-      _fetchAdsbApi(`https://api.airplanes.live/v2/callsign/${cs}`, 'airplanes.live'),
+      _fetchAdsbApi(`https://api.adsb.lol/v2/callsign/${cs}`,      'adsb.lol',      validCallsigns),
+      _fetchAdsbApi(`https://api.airplanes.live/v2/callsign/${cs}`, 'airplanes.live', validCallsigns),
     ]);
-  } catch(e) { console.warn('[SafeZone] All ADS-B feeds failed:', e.message); return null; }
+  } catch(e) { console.warn('[SafeZone] ADS-B feeds failed for', cs, ':', e.message); return null; }
 }
 
 // Resolve ICAO airport code → { lat, lng, name, iata } — local table first
@@ -943,7 +967,7 @@ async function trackFlightNumber() {
 
     const [record, adsbAc] = await Promise.all([
       fetchFlightRecord(raw),
-      Promise.any(variants.map(cs => fetchAdsbLive(cs))).catch(() => null),
+      Promise.any(variants.map(cs => fetchAdsbLive(cs, variants))).catch(() => null),
     ]);
     if (signal.aborted) return;
 
@@ -956,33 +980,51 @@ async function trackFlightNumber() {
     }
 
     // ── Merge best data from both sources ────────────────────────
-    const icao24  = record?.icao24  || adsbAc?.hex   || null;
-    const oIcao   = record?.estDepartureAirport || adsbAc?.from_icao || adsbAc?.orig_icao || null;
-    const dIcao   = record?.estArrivalAirport   || adsbAc?.to_icao   || adsbAc?.dest_icao || null;
-    const csFound = (record?.callsign || adsbAc?.flight || raw).trim().toUpperCase();
+    // Final safety check: verify the callsign we got is actually one we expected
+    const recordCs = record ? (record.callsign || '').trim().toUpperCase() : '';
+    const adsbCs   = adsbAc ? (adsbAc.flight || '').trim().toUpperCase() : '';
+    const recordOk = record && variants.includes(recordCs);
+    const adsbOk   = adsbAc && variants.includes(adsbCs);
 
-    const lastSeenDate = record?.lastSeen
-      ? new Date(record.lastSeen * 1000).toUTCString().slice(0, 22) + ' UTC'
+    if (!recordOk && !adsbOk) {
+      console.warn('[SafeZone] Callsign mismatch — record:', recordCs, 'adsb:', adsbCs, 'expected:', variants);
+      document.getElementById('fn-status').textContent =
+        `✖ "${raw.toUpperCase()}" not found. APIs returned unrelated flights — filtered out.`;
+      showToast('Flight not found (mismatched results filtered)', 'error');
+      return;
+    }
+
+    // Use only the validated source(s)
+    const validRecord = recordOk ? record : null;
+    const validAdsb   = adsbOk   ? adsbAc : null;
+
+    const icao24  = validRecord?.icao24  || validAdsb?.hex   || null;
+    const oIcao   = validRecord?.estDepartureAirport || validAdsb?.from_icao || validAdsb?.orig_icao || null;
+    const dIcao   = validRecord?.estArrivalAirport   || validAdsb?.to_icao   || validAdsb?.dest_icao || null;
+    const csFound = (validRecord?.callsign || validAdsb?.flight || raw).trim().toUpperCase();
+
+    const lastSeenDate = validRecord?.lastSeen
+      ? new Date(validRecord.lastSeen * 1000).toUTCString().slice(0, 22) + ' UTC'
       : null;
 
     document.getElementById('fn-status').textContent = 'Resolving airports + drawing route…';
 
     // ── Build live state: prefer adsb.lol (wider coverage), fall back to OpenSky ─
     let state = null;
-    if (adsbAc && adsbAc.lat != null) {
+    if (validAdsb && validAdsb.lat != null) {
       // Normalise adsb.lol fields into the same positional array OpenSky uses
       // [0]=icao24, [1]=callsign, [5]=lon, [6]=lat, [7]=alt_m, [9]=speed_ms, [10]=track
       state = [
-        adsbAc.hex,
+        validAdsb.hex,
         csFound,
         null, null, null,
-        adsbAc.lon,
-        adsbAc.lat,
-        adsbAc.alt_baro != null ? adsbAc.alt_baro * 0.3048
-          : adsbAc.alt_geom != null ? adsbAc.alt_geom * 0.3048 : null,
+        validAdsb.lon,
+        validAdsb.lat,
+        validAdsb.alt_baro != null ? validAdsb.alt_baro * 0.3048
+          : validAdsb.alt_geom != null ? validAdsb.alt_geom * 0.3048 : null,
         null,
-        adsbAc.gs != null ? adsbAc.gs * 0.514444 : null,  // knots → m/s
-        adsbAc.track ?? null,
+        validAdsb.gs != null ? validAdsb.gs * 0.514444 : null,  // knots → m/s
+        validAdsb.track ?? null,
       ];
     } else if (icao24) {
       state = await fetchLiveState(icao24);
@@ -996,7 +1038,7 @@ async function trackFlightNumber() {
     const altM    = isAirborne ? state[7]         : null;
     const speedMs = isAirborne ? state[9]         : null;
     const track   = isAirborne ? (state[10] ?? 0) : 0;
-    const dataSource = adsbAc ? 'ADS-B Exchange' : 'OpenSky';
+    const dataSource = validAdsb ? ('ADS-B · ' + (validAdsb._source || 'Exchange')) : 'OpenSky';
 
     // ── Resolve airports + draw route ───────────────────────────
     const [oCoord, dCoord] = await Promise.all([
