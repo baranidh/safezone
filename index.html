@@ -296,55 +296,44 @@
       }
     }
 
-    /* ── AM I IN DANGER? button ─────────────────────────── */
+    /* ── Locate Me button ──────────────────────────────── */
     #locate-me-btn {
       position: fixed; bottom: 80px; right: 14px; z-index: 1000;
-      border-radius: 16px; border: 2px solid var(--red);
-      background: linear-gradient(135deg, rgba(255,59,59,.25) 0%, rgba(255,107,53,.18) 100%);
-      color: #fff; backdrop-filter: blur(14px); cursor: pointer;
-      display: flex; align-items: center; justify-content: center; gap: 10px;
-      padding: 14px 22px;
-      font-size: .95rem; font-weight: 800; letter-spacing: .04em;
-      box-shadow: 0 0 20px rgba(255,59,59,.25), 0 4px 15px rgba(0,0,0,.5);
-      transition: all .3s ease;
-      text-transform: uppercase;
-      animation: danger-glow 2.5s ease-in-out infinite;
+      border-radius: 24px; border: 1px solid rgba(0,212,255,.35);
+      background: rgba(10,16,34,.85);
+      color: var(--accent); backdrop-filter: blur(14px); cursor: pointer;
+      display: flex; align-items: center; gap: 7px;
+      padding: 9px 16px;
+      font-size: .75rem; font-weight: 600; letter-spacing: .03em;
+      box-shadow: 0 2px 12px rgba(0,0,0,.4);
+      transition: all .25s ease;
     }
-    #locate-me-btn i { font-size: 1.2rem; }
-    #locate-me-btn .btn-subtitle {
-      font-size: .58rem; font-weight: 500; opacity: .8;
-      letter-spacing: .02em; text-transform: none;
-      display: block; margin-top: 1px;
-    }
+    #locate-me-btn i { font-size: .85rem; }
+    #locate-me-btn .btn-subtitle { display: none; }
     #locate-me-btn:hover {
-      background: linear-gradient(135deg, rgba(255,59,59,.45) 0%, rgba(255,107,53,.35) 100%);
-      box-shadow: 0 0 35px rgba(255,59,59,.45), 0 4px 20px rgba(0,0,0,.5);
-      transform: scale(1.04);
+      background: rgba(0,212,255,.15);
+      box-shadow: 0 2px 18px rgba(0,212,255,.25);
+      transform: translateY(-1px);
     }
     #locate-me-btn:active { transform: scale(0.97); }
     #locate-me-btn.active {
       border-color: #39ff82;
-      background: linear-gradient(135deg, rgba(57,255,130,.2) 0%, rgba(0,212,255,.12) 100%);
-      box-shadow: 0 0 20px rgba(57,255,130,.25), 0 4px 15px rgba(0,0,0,.5);
-      animation: none;
+      color: #39ff82;
+      background: rgba(57,255,130,.1);
+      box-shadow: 0 2px 12px rgba(57,255,130,.2);
     }
     #locate-me-btn.active .btn-label { display: none; }
     #locate-me-btn.active .btn-safe { display: flex; }
-    #locate-me-btn .btn-safe { display: none; flex-direction: column; align-items: center; }
+    #locate-me-btn .btn-safe { display: none; align-items: center; gap: 7px; }
     #locate-me-btn.locating { animation: pulse-locate 1.2s infinite; }
     @keyframes pulse-locate {
       0%,100% { box-shadow: 0 0 0 0 rgba(0,212,255,.4); }
-      50% { box-shadow: 0 0 0 14px rgba(0,212,255,0); }
-    }
-    @keyframes danger-glow {
-      0%,100% { box-shadow: 0 0 20px rgba(255,59,59,.25), 0 4px 15px rgba(0,0,0,.5); }
-      50% { box-shadow: 0 0 35px rgba(255,59,59,.5), 0 4px 20px rgba(0,0,0,.5); }
+      50% { box-shadow: 0 0 0 10px rgba(0,212,255,0); }
     }
     @media (max-width: 700px) {
       #locate-me-btn {
-        bottom: 70px; right: 10px; left: 10px;
-        padding: 16px 18px; font-size: 1rem;
-        border-radius: 14px;
+        bottom: 70px; right: 10px;
+        padding: 10px 16px; font-size: .78rem;
       }
     }
 
@@ -550,15 +539,12 @@
 </div>
 
 <!-- ── LOCATE ME ────────────────────────────────────────────── -->
-<button id="locate-me-btn" onclick="locateMe()" title="Check if you're in a danger zone">
-  <i class="fas fa-triangle-exclamation"></i>
-  <div class="btn-label">
-    <span>Am I in Danger?</span>
-    <span class="btn-subtitle">Tap to check your GPS location</span>
-  </div>
+<button id="locate-me-btn" onclick="locateMe()" title="Show your GPS location on the map">
+  <i class="fas fa-location-crosshairs"></i>
+  <span class="btn-label">Locate Me</span>
   <div class="btn-safe">
-    <span style="color:#39ff82">Location Active</span>
-    <span class="btn-subtitle">Tap to refresh</span>
+    <i class="fas fa-location-crosshairs"></i>
+    <span>Located</span>
   </div>
 </button>
 <div id="locate-info">
@@ -581,7 +567,7 @@
 // ══════════════════════════════════════════════════════════════
 //  VERSION — increment on every pull request
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v1.0.9';
+const APP_VERSION = 'v1.1.0';
 
 // ══════════════════════════════════════════════════════════════
 //  AIRPORTS
