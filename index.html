@@ -567,7 +567,7 @@
 // ══════════════════════════════════════════════════════════════
 //  VERSION — increment on every pull request
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v1.1.0';
+const APP_VERSION = 'v1.1.1';
 
 // ══════════════════════════════════════════════════════════════
 //  AIRPORTS
@@ -1612,7 +1612,11 @@ async function trackFlightNumber() {
     const altM    = isAirborne ? state[7]         : null;
     const speedMs = isAirborne ? state[9]         : null;
     const track   = isAirborne ? (state[10] ?? 0) : 0;
-    const dataSource = validAdsb ? ('ADS-B · ' + (validAdsb._source || 'Exchange')) : 'OpenSky';
+    const dataSource = validAdsb
+      ? (validAdsb._source || 'ADS-B')
+      : validRecord ? 'OpenSky'
+      : routeOnly ? 'Scheduled route'
+      : 'Unknown';
 
     // ── Resolve airports + draw route ───────────────────────────
     const [oCoord, dCoord] = await Promise.all([
