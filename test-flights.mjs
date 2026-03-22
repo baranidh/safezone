@@ -406,8 +406,25 @@ const KNOWN_ROUTES = {
   QF1:    { from:'YSSY', to:'WSSS' }, CX888:  { from:'VHHH', to:'KLAX' },
 };
 
+// Simulate localStorage cache (in-memory for tests)
+let _mockCache = {};
+
+function cacheRoute(rawCallsign, fromIcao, toIcao) {
+  if (!fromIcao || !toIcao) return;
+  const variants = normalizeCallsign(rawCallsign);
+  const key = variants[0];
+  if (!key) return;
+  _mockCache[key] = { from: fromIcao, to: toIcao, ts: Date.now() };
+}
+
 function lookupKnownRoute(rawCallsign) {
   const variants = normalizeCallsign(rawCallsign);
+  // 1. Check cache first
+  for (const cs of variants) {
+    const cached = _mockCache[cs];
+    if (cached && cached.from && cached.to) return { oIcao: cached.from, dIcao: cached.to };
+  }
+  // 2. Fall back to hardcoded
   for (const cs of variants) {
     const r = KNOWN_ROUTES[cs];
     if (r) return { oIcao: r.from, dIcao: r.to };
@@ -448,6 +465,58 @@ for (const input of knownRouteFlights) {
   } else {
     fail(`${input} → should trigger routeOnly when both APIs return null`);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TEST GROUP 13: Auto-cache from successful lookups
+// ═══════════════════════════════════════════════════════════════
+console.log('\n┌─── TEST GROUP 13: Auto-cache from successful lookups ─────┐');
+
+// Reset cache
+_mockCache = {};
+
+// Simulate a successful API lookup for SQ308 → cache the result
+cacheRoute('SQ308', 'WSSS', 'EGLL');
+const cachedSQ = lookupKnownRoute('SQ308');
+if (cachedSQ && cachedSQ.oIcao === 'WSSS' && cachedSQ.dIcao === 'EGLL') {
+  ok('SQ308: cached route retrieved correctly (WSSS → EGLL)');
+} else {
+  fail('SQ308: cached route not found after cacheRoute()');
+}
+
+// Cache overwrites hardcoded: cache a different route for EK215
+cacheRoute('EK215', 'OMDB', 'YSSY'); // different from hardcoded OMDB→KJFK
+const cachedEK = lookupKnownRoute('EK215');
+if (cachedEK && cachedEK.oIcao === 'OMDB' && cachedEK.dIcao === 'YSSY') {
+  ok('EK215: cached route overrides hardcoded (OMDB → YSSY, not KJFK)');
+} else {
+  fail('EK215: cache should take priority over hardcoded');
+}
+
+// Unknown flight not in cache or hardcoded → null
+_mockCache = {};
+const noCacheUnknown = lookupKnownRoute('ZZ123');
+if (noCacheUnknown === null) ok('ZZ123: not in cache or hardcoded → null');
+else fail('ZZ123: should be null when not cached or hardcoded');
+
+// Flight not in cache falls through to hardcoded
+_mockCache = {};
+const fallToHardcoded = lookupKnownRoute('BA117');
+if (fallToHardcoded && fallToHardcoded.oIcao === 'EGLL' && fallToHardcoded.dIcao === 'KJFK') {
+  ok('BA117: not in cache → falls through to hardcoded (EGLL → KJFK)');
+} else {
+  fail('BA117: should fall through to hardcoded when cache empty');
+}
+
+// cacheRoute ignores invalid input (no from/to)
+const before = { ..._mockCache };
+cacheRoute('AA100', null, 'EGLL');
+cacheRoute('AA100', 'KJFK', null);
+cacheRoute('', 'KJFK', 'EGLL');
+if (JSON.stringify(_mockCache) === JSON.stringify(before)) {
+  ok('cacheRoute ignores invalid input (null from/to, empty callsign)');
+} else {
+  fail('cacheRoute should not cache with null from, null to, or empty callsign');
 }
 
 // ═══════════════════════════════════════════════════════════════

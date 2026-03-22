@@ -842,9 +842,42 @@ const KNOWN_ROUTES = {
   IR721:  { from:'OIIE', to:'LTBA' }, IR722:  { from:'LTBA', to:'OIIE' },
 };
 
-// Look up known route from local database using all callsign variants.
+// ── Route cache (localStorage) ────────────────────────────────
+// Every successful flight lookup caches { from, to, ts } keyed by IATA callsign.
+// On future lookups, cached data is preferred over hardcoded KNOWN_ROUTES.
+const _ROUTE_CACHE_KEY = 'safezone_route_cache';
+
+function _loadRouteCache() {
+  try { return JSON.parse(localStorage.getItem(_ROUTE_CACHE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function cacheRoute(rawCallsign, fromIcao, toIcao) {
+  if (!fromIcao || !toIcao) return;
+  const variants = normalizeCallsign(rawCallsign);
+  const key = variants[0]; // cache under IATA form (e.g. "SQ308")
+  if (!key) return;
+  try {
+    const cache = _loadRouteCache();
+    cache[key] = { from: fromIcao, to: toIcao, ts: Date.now() };
+    localStorage.setItem(_ROUTE_CACHE_KEY, JSON.stringify(cache));
+    console.log('[SafeZone] Cached route:', key, fromIcao, '→', toIcao);
+  } catch(e) { console.debug('[SafeZone] Route cache write failed:', e.message); }
+}
+
+// Look up known route: localStorage cache first, then hardcoded KNOWN_ROUTES.
 function lookupKnownRoute(rawCallsign) {
   const variants = normalizeCallsign(rawCallsign);
+  // 1. Check localStorage cache
+  const cache = _loadRouteCache();
+  for (const cs of variants) {
+    const cached = cache[cs];
+    if (cached && cached.from && cached.to) {
+      console.log('[SafeZone] Route from cache:', cs, cached.from, '→', cached.to);
+      return { oIcao: cached.from, dIcao: cached.to };
+    }
+  }
+  // 2. Fall back to hardcoded
   for (const cs of variants) {
     const r = KNOWN_ROUTES[cs];
     if (r) return { oIcao: r.from, dIcao: r.to };
@@ -1192,6 +1225,9 @@ async function trackFlightNumber() {
         }
       }
     }
+
+    // Cache the resolved route for future offline use
+    if (oIcao && dIcao) cacheRoute(raw, oIcao, dIcao);
 
     const lastSeenDate = validRecord?.lastSeen
       ? new Date(validRecord.lastSeen * 1000).toUTCString().slice(0, 22) + ' UTC'
